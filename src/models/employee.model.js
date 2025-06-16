@@ -14,6 +14,8 @@ const employeeSchema = new mongoose.Schema({
         enum: ['admin', 'employee'],
         default: 'employee'
     }
+}, {
+    timestamps: true
 });
 
 export default mongoose.model('Employee', employeeSchema);
