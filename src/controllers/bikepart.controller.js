@@ -1,4 +1,4 @@
-import BikePart from "../models/bikepart.model"
+import BikePart from "../models/bikepart.model.js"
 
 export const getBikeParts = async (req, res) => {
   try {

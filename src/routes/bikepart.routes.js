@@ -6,7 +6,7 @@ import {
   getBikePartById,
   getBikeParts,
   updateBikePart
-} from "../controllers/bikepart.controller"
+} from "../controllers/bikepart.controller.js"
 
 const router = express.Router();
 
@@ -16,4 +16,4 @@ router.get('/', createBikeParts);
 router.get('/:id', updateBikePart);
 router.get('/:id', deleteBikePart);
 
-module.exports = router
+export default router
