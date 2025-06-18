@@ -12,8 +12,8 @@ const router = express.Router();
 
 router.get('/', getBikeParts);
 router.get('/:id', getBikePartById);
-router.get('/', createBikeParts);
-router.get('/:id', updateBikePart);
-router.get('/:id', deleteBikePart);
+router.post('/', createBikeParts);
+router.put('/:id', updateBikePart);
+router.delete('/:id', deleteBikePart);
 
 export default router
