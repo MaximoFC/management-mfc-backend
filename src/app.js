@@ -5,7 +5,8 @@ import connectDB from './config/db.js';
 import authRoutes from './routes/auth.routes.js'
 import clientRoutes from './routes/client.routes.js';
 import bikeRoutes from './routes/bike.routes.js';
-import bikePartsRoutes from './routes/bikepart.routes.js'
+import bikePartsRoutes from './routes/bikepart.routes.js';
+import cashRoutes from './routes/cash.routes.js';
 
 dotenv.config();
 connectDB();
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use('/api', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/bikes', bikeRoutes);
-app.use('/api/bikeparts', bikePartsRoutes)
+app.use('/api/bikeparts', bikePartsRoutes);
+app.use('/api/cash', cashRoutes);
 
 export default app;
