@@ -6,7 +6,7 @@ export const getBalance = async (req, res) => {
     try {
         let cash = await Cash.findOne();
         if (!cash) {
-            cash = await Caja.create({ balance: 0 });
+            cash = await Cash.create({ balance: 0 });
         }
         res.json({ balance: cash.balance });
     } catch (error) {
@@ -28,7 +28,6 @@ export const flowList = async (req, res) => {
 export const createFlow = async (req, res) => {
     try {
         const { type, amount, description, employee_id } = req.body;
-
         if(!['ingreso', 'egreso'].includes(type)) {
             return res.status(400).json({ error: 'Invalid type' });
         }
