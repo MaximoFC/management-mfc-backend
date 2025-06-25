@@ -8,6 +8,7 @@ import bikeRoutes from './routes/bike.routes.js';
 import bikePartsRoutes from './routes/bikepart.routes.js';
 import budgetRoutes from './routes/budget.routes.js';
 import cashRoutes from './routes/cash.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
 
 dotenv.config();
 connectDB();
@@ -22,5 +23,6 @@ app.use('/api/bikes', bikeRoutes);
 app.use('/api/bikeparts', bikePartsRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/cash', cashRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 export default app;
