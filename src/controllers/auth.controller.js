@@ -31,3 +31,19 @@ export const login = async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 };
+
+export const getProfile = async (req, res) => {
+    try {
+        const employee = await Employee.findById(req.user.id);
+        if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+        res.json({
+            id: employee._id,
+            name: employee.name,
+            role: employee.role
+        });
+    } catch (error) {
+        console.error('Error getting profile: ', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+};
