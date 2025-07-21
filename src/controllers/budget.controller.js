@@ -1,12 +1,13 @@
 import Budget from '../models/budget.model.js';
 import BikePart from '../models/bikepart.model.js';
+import Service from '../models/service.model.js';
+import { getDollarBlueRate } from '../utils/getDollarRate.js';
 
 export const createBudget = async (req, res) => {
   try {
-    const { bike_id, employee_id, currency, parts } = req.body;
+    const { bike_id, employee_id, parts, services } = req.body;
 
     let total_usd = 0;
-    let total_ars = 0;
 
     for (const item of parts) {
       const part = await BikePart.findById(item.bikepart_id);
@@ -15,15 +16,31 @@ export const createBudget = async (req, res) => {
       total_usd += part.price * item.amount;
     }
 
-    if (currency === 'ARS') {
-      total_ars = total_usd * 1000; 
+    const serviceItems = [];
+    for (const item of services) {
+      const service = await Service.findById(item.service_id);
+      if (!service) return res.status(404).json({ message: 'Service not found' });
+
+      total_usd += service.price_usd;
+
+      serviceItems.push({
+        service_id: service._id,
+        name: service.name,
+        description: service.description,
+        price_usd: service.price_usd
+      });
     }
+
+    const dollarRate = await getDollarBlueRate();
+    const total_ars = total_usd * dollarRate;
 
     const budget = new Budget({
       bike_id,
       employee_id,
-      currency,
+      currency: 'USD',
+      dollar_rate_used: dollarRate,
       parts,
+      services: serviceItems,
       total_usd,
       total_ars,
       creation_date: new Date(),
@@ -91,7 +108,8 @@ export const getBudgetById = async (req, res) => {
     const budget = await Budget.findById(id)
       .populate('bike_id')
       .populate('employee_id')
-      .populate('parts.bikepart_id');
+      .populate('parts.bikepart_id')
+      .populate('services.service_id');
 
     if (!budget) return res.status(404).json({ message: 'Presupuesto no encontrado' });
     res.json(budget);

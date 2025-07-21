@@ -22,8 +22,14 @@ const budgetSchema = new mongoose.Schema({
   },
   payment_date: Date,
   currency: { 
-    type: String, enum: ['USD', 'ARS'], 
-    default: 'USD' },
+    type: String,
+    enum: ['USD'],
+    default: 'USD'
+  },
+  dollar_rate_used: {
+    type: Number,
+    required: true
+  },
   total_usd: Number,
   total_ars: Number,
   days_of_stay: Number,
@@ -31,6 +37,14 @@ const budgetSchema = new mongoose.Schema({
     {
       bikepart_id: { type: mongoose.Schema.Types.ObjectId, ref: 'BikePart' },
       amount: Number
+    }
+  ],
+  services: [
+    {
+      service_id: { type:mongoose.Schema.Types.ObjectId, ref: 'Service' },
+      name: String,
+      description: String,
+      price_usd: Number
     }
   ]
 });
