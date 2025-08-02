@@ -5,6 +5,10 @@ import { getDollarBlueRate } from '../utils/getDollarRate.js';
 
 export const createBudget = async (req, res) => {
   try {
+    //agregue esto pq estaba teniendo errores y no sabia donde
+    console.log("---- LLAMADO A createBudget ----");
+    console.log("BODY:", req.body);
+
     const { bike_id, employee_id, parts, services } = req.body;
 
     let total_usd = 0;

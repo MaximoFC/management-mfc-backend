@@ -1,11 +1,13 @@
 import express from 'express';
 import {
+    getBikes,
     createBike,
-    disableBike
+    disableBike,
 } from '../controllers/bike.controller.js';
 
 const router = express.Router();
 
+router.get('/', getBikes)
 router.post('/', createBike);
 router.delete('/:id', disableBike);
 
