@@ -13,12 +13,25 @@ export const createClient = async (req, res) => {
 
 export const getClients = async (req, res) => {
     try {
-        const clients = await Client.find();
+        //lo agregue para que se banque la busqueda en el navbar
+        const { q } = req.query;
+        let filter = {};
+        if (q) {
+            filter = {
+                $or: [
+                    { name: new RegExp(q, 'i') },
+                    { surname: new RegExp(q, 'i') },
+                    { mobileNum: new RegExp(q, 'i') },
+                ]
+            };
+        }
+        const clients = await Client.find(filter);
         res.json(clients);
     } catch (error) {
         res.status(500).json({ error: 'Error getting clients' });
     }
 };
+
 
 export const getClientsById = async (req, res) => {
     try {
