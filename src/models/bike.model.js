@@ -4,7 +4,8 @@ const bikeSchema = new mongoose.Schema({
     brand: String,
     model: String,
     color: String,
-    client_id: {
+    serialNumber: String,
+    current_owner_id: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Client',
         required: true
@@ -12,7 +13,14 @@ const bikeSchema = new mongoose.Schema({
     active: {
         type: Boolean,
         default: true
-    }
+    },
+    ownership_history: [
+        {
+            client_id: {type: mongoose.Schema.Types.ObjectId, ref: 'Client'},
+            from: Date,
+            to: Date
+        }
+    ]
 }, {
     timestamps: true
 });

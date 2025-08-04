@@ -5,13 +5,16 @@ import { getDollarBlueRate } from '../utils/getDollarRate.js';
 
 export const createBudget = async (req, res) => {
   try {
-    //agregue esto pq estaba teniendo errores y no sabia donde
-    console.log("---- LLAMADO A createBudget ----");
-    console.log("BODY:", req.body);
-
     const { bike_id, employee_id, parts, services } = req.body;
 
+    if (!parts?.length && !services?.length) {
+      return res.status(400).json({ message: 'Debe incluir al menos una pieza o un servicio' });
+    }
+
     let total_usd = 0;
+
+    const bike = await Bike.findById(bike_id);
+    if (!bike) return res.status(404).json({ message: 'Bike not found' });
 
     for (const item of parts) {
       const part = await BikePart.findById(item.bikepart_id);
@@ -40,6 +43,7 @@ export const createBudget = async (req, res) => {
 
     const budget = new Budget({
       bike_id,
+      client_at_creation: bike.current_owner_id,
       employee_id,
       currency: 'USD',
       dollar_rate_used: dollarRate,
@@ -61,7 +65,10 @@ export const createBudget = async (req, res) => {
 export const getAllBudgets = async (req, res) => {
   try {
     const budgets = await Budget.find()
-      .populate('bike_id')
+      .populate({
+        path: 'bike_id',
+        populate: { path: 'client_id' }
+      })
       .populate('employee_id')
       .populate('parts.bikepart_id');
     res.json(budgets);
@@ -131,5 +138,19 @@ export const deleteBudget = async (req, res) => {
     res.json({ message: 'Presupuesto eliminado correctamente' });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+export const getBikeBudgets = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const budgets = await Budget.find({ bike_id: id })
+      .populate('employee_id')
+      .populate('parts.bikepart_id')
+      .populate('services.service_id');
+    
+    res.json(budgets);
+  } catch (error) {
+    res.status(500).json({message: error.message});
   }
 };

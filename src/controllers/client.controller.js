@@ -1,5 +1,6 @@
 import Client from "../models/client.model.js";
 import Bike from "../models/bike.model.js";
+import Budget from "../models/budget.model.js";
 
 export const createClient = async (req, res) => {
     try {
@@ -36,8 +37,13 @@ export const getClients = async (req, res) => {
 export const getClientsById = async (req, res) => {
     try {
         const client = await Client.findById(req.params.id);
-        const bikes = await Bike.find({ client_id: client._id, active: true });
-        res.json({ client, bikes });
+
+        const bikes = await Bike.find({ current_owner_id: client._id, active: true });
+
+        const bikeIds = bikes.map(b => b._id);
+        const budgets = await Budget.find({ bike_id: { $in: bikeIds } }).sort({ createdAt: -1 });
+
+        res.json({ client, bikes, budgets });
     } catch (error) {
         res.status(500).json({ error: 'Error getting client' });
     }
@@ -55,7 +61,7 @@ export const updateClient = async (req, res) => {
 export const deleteClient = async (req, res) => {
     try {
         await Client.findByIdAndDelete(req.params.id);
-        await Bike.deleteMany({ client_id: req.params.id });
+        await Bike.deleteMany({ current_owner_id: req.params.id });
         res.json({ message: 'Client and bikes deleted' });
     } catch (error) {
         res.status(500).json({ error: 'Error deleting client' });

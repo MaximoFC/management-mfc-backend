@@ -46,7 +46,12 @@ const budgetSchema = new mongoose.Schema({
       description: String,
       price_usd: Number
     }
-  ]
+  ],
+  client_at_creation: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Client',
+    required: true
+  }
 });
 
 export default mongoose.model('Budget', budgetSchema);
