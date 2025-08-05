@@ -36,7 +36,10 @@ const budgetSchema = new mongoose.Schema({
   parts: [
     {
       bikepart_id: { type: mongoose.Schema.Types.ObjectId, ref: 'BikePart' },
-      amount: Number
+      description: String,           
+      unit_price_usd: Number,             
+      amount: Number,
+      subtotal_usd: Number
     }
   ],
   services: [

@@ -1,6 +1,7 @@
 import Budget from '../models/budget.model.js';
 import BikePart from '../models/bikepart.model.js';
 import Service from '../models/service.model.js';
+import Bike from '../models/bike.model.js';
 import { getDollarBlueRate } from '../utils/getDollarRate.js';
 
 export const createBudget = async (req, res) => {
@@ -11,18 +12,32 @@ export const createBudget = async (req, res) => {
       return res.status(400).json({ message: 'Debe incluir al menos una pieza o un servicio' });
     }
 
-    let total_usd = 0;
-
     const bike = await Bike.findById(bike_id);
     if (!bike) return res.status(404).json({ message: 'Bike not found' });
 
+    const dollarRate = await getDollarBlueRate();
+
+    let total_usd = 0;
+
+    // Procesar piezas con precios históricos
+    const partItems = [];
     for (const item of parts) {
       const part = await BikePart.findById(item.bikepart_id);
       if (!part) return res.status(404).json({ message: 'BikePart not found' });
 
-      total_usd += part.price * item.amount;
+      const subtotal = part.price * item.amount;
+      total_usd += subtotal;
+
+      partItems.push({
+        bikepart_id: part._id,
+        description: part.description,
+        unit_price_usd: part.price,
+        amount: item.amount,
+        subtotal_usd: subtotal
+      });
     }
 
+    // Procesar servicios con precios históricos
     const serviceItems = [];
     for (const item of services) {
       const service = await Service.findById(item.service_id);
@@ -38,7 +53,6 @@ export const createBudget = async (req, res) => {
       });
     }
 
-    const dollarRate = await getDollarBlueRate();
     const total_ars = total_usd * dollarRate;
 
     const budget = new Budget({
@@ -47,7 +61,7 @@ export const createBudget = async (req, res) => {
       employee_id,
       currency: 'USD',
       dollar_rate_used: dollarRate,
-      parts,
+      parts: partItems,
       services: serviceItems,
       total_usd,
       total_ars,
@@ -67,7 +81,7 @@ export const getAllBudgets = async (req, res) => {
     const budgets = await Budget.find()
       .populate({
         path: 'bike_id',
-        populate: { path: 'client_id' }
+        populate: { path: 'current_owner_id' }
       })
       .populate('employee_id')
       .populate('parts.bikepart_id');
