@@ -2,7 +2,7 @@ import Budget from '../models/budget.model.js';
 import BikePart from '../models/bikepart.model.js';
 import Service from '../models/service.model.js';
 import Bike from '../models/bike.model.js';
-import { getDollarBlueRate } from '../utils/getDollarRate.js';
+import getDollarBlueRate from '../utils/getDollarRate.js';
 
 export const createBudget = async (req, res) => {
   try {
@@ -166,5 +166,29 @@ export const getBikeBudgets = async (req, res) => {
     res.json(budgets);
   } catch (error) {
     res.status(500).json({message: error.message});
+  }
+};
+
+export const getAllBudgetsOfClient = async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    const bikes = await Bike.find({
+      $or: [
+        { current_owner_id: clientId },
+        { 'ownership_history.client_id': clientId }
+      ]
+    });
+
+    const bikeIds = bikes.map(b => b._id);
+
+    const budgets = await Budget.find({bike_id: {$in: bikeIds}})
+      .populate('bike_id')
+      .populate('employee_id')
+      .sort({createdAt: -1});
+
+    res.json({ budgets });
+  } catch (error) {
+    res.status(500).json({ error: 'Error getting all budgets of client' });
   }
 };

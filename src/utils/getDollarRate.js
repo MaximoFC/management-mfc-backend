@@ -1,6 +1,6 @@
 import axios from "axios";
 
-export const getDollarBlueRate = async () => {
+const getDollarBlueRate = async () => {
     try {
         const response = await axios.get('https://api.bluelytics.com.ar/v2/latest');
         return response.data.blue.value_sell;
@@ -9,3 +9,5 @@ export const getDollarBlueRate = async () => {
         return 1000;
     }
 };
+
+export default getDollarBlueRate;
