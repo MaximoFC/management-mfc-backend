@@ -20,7 +20,7 @@ const BikePartSchema = new mongoose.Schema({
     required: true, 
     default: 0 
   },
-  price: { 
+  price_usd: { 
     type: Number, 
     required: true 
   }

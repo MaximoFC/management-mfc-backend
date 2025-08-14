@@ -25,13 +25,13 @@ export const createBudget = async (req, res) => {
       const part = await BikePart.findById(item.bikepart_id);
       if (!part) return res.status(404).json({ message: 'BikePart not found' });
 
-      const subtotal = part.price * item.amount;
+      const subtotal = part.price_usd * item.amount;
       total_usd += subtotal;
 
       partItems.push({
         bikepart_id: part._id,
         description: part.description,
-        unit_price_usd: part.price,
+        unit_price_usd: part.price_usd,
         amount: item.amount,
         subtotal_usd: subtotal
       });
