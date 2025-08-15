@@ -3,6 +3,7 @@ import BikePart from '../models/bikepart.model.js';
 import Service from '../models/service.model.js';
 import Bike from '../models/bike.model.js';
 import getDollarBlueRate from '../utils/getDollarRate.js';
+import cashFlowModel from '../models/cashFlow.model.js';
 
 export const createBudget = async (req, res) => {
   try {
@@ -115,11 +116,13 @@ export const updateBudgetState = async (req, res) => {
       }
     }
 
-    budget.state = state;
-    if (state === 'pagado' && payment_date) {
-      budget.payment_date = new Date(payment_date);
+    if (state === 'pagado' && budget.state !== 'pagado') {
+      if (payment_date) {
+        budget.payment_date = new Date(payment_date);
+      }
     }
 
+    budget.state = state;
     await budget.save();
     res.json(budget);
   } catch (err) {

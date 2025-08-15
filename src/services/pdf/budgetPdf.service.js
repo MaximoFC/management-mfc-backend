@@ -17,14 +17,27 @@ export const generateBudgetPdf = async (budgetData) => {
     const logoPath = path.join(process.cwd(), 'src', 'assets', 'logo.jpg');
     const logoBase64 = fs.readFileSync(logoPath).toString('base64');
 
+    // --- Preparar filas de servicios y repuestos ---
+    const serviceRows = (budgetData.items || [])
+        .filter(i => i.name.toLowerCase().includes('service'))
+        .map(s => [
+            s.name,
+            `$${s.price.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+        ]);
+
+    const partRows = (budgetData.items || [])
+        .filter(i => !i.name.toLowerCase().includes('service'))
+        .map(p => [
+            p.name,
+            p.qty,
+            `$${(p.price * p.qty).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+        ]);
+
     const docDefinition = {
         content: [
             {
                 columns: [
-                    {
-                        image: `data:image/jpeg;base64,${logoBase64}`,
-                        width: 70
-                    },
+                    { image: `data:image/jpeg;base64,${logoBase64}`, width: 70 },
                     {
                         width: '*',
                         alignment: 'right',
@@ -37,46 +50,49 @@ export const generateBudgetPdf = async (budgetData) => {
                     }
                 ]
             },
+            { columns: [{ text: `Presupuesto del día ${new Date().toLocaleDateString()}`, style: 'boldText', alignment: 'left' }], margin: [0, 10, 0, 10] },
+
+            // --- Sección Servicios ---
+            { text: 'Servicios', style: 'sectionHeader', margin: [0, 10, 0, 5] },
             {
-                columns: [
-                    { text: `Presupuesto del día ${new Date().toLocaleDateString()}`, style: 'boldText', alignment: 'left' },
-                ],
-                margin: [0, 10, 0, 10]
+                table: {
+                    widths: ['*', 'auto'],
+                    body: [['Servicio', 'Precio'], ...(serviceRows.length ? serviceRows : [['No hay servicios', '']])]
+                }
             },
+
+            // --- Sección Repuestos ---
+            { text: 'Repuestos', style: 'sectionHeader', margin: [0, 15, 0, 5] },
             {
                 table: {
                     widths: ['*', 'auto', 'auto'],
-                    body: [
-                        ['Repuesto', 'Cantidad', 'Precio'],
-                        ...budgetData.items.map(item => [
-                            item.name,
-                            item.qty,
-                            `$${item.price.toFixed(2)}`
-                        ]),
-                        [
-                            { text: 'TOTAL', colSpan: 2, alignment: 'right', bold: true },
-                            {},
-                            { text: `$${budgetData.total.toFixed(2)}`, bold: true }
-                        ]
-                    ]
+                    body: [['Repuesto', 'Cantidad', 'Precio'], ...(partRows.length ? partRows : [['No hay repuestos', '', '']])]
                 }
+            },
+
+            // --- Total ---
+            {
+                table: {
+                    widths: ['*', 'auto'],
+                    body: [[{ text: 'TOTAL', alignment: 'right', bold: true }, { text: `$${budgetData.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`, bold: true }]]
+                },
+                margin: [0, 15, 0, 0]
             }
         ],
         styles: {
             header: { fontSize: 18, bold: true },
             boldText: { fontSize: 12, bold: true },
-            info: { fontSize: 10 }
+            info: { fontSize: 10 },
+            sectionHeader: { fontSize: 12, bold: true, decoration: 'underline' }
         }
     };
+
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
     const chunks = [];
 
     return new Promise((resolve, reject) => {
         pdfDoc.on('data', chunk => chunks.push(chunk));
-        pdfDoc.on('end', () => {
-            const result = Buffer.concat(chunks);
-            resolve(result);
-        });
+        pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
         pdfDoc.end();
     });
 };
