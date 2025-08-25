@@ -12,6 +12,7 @@ import notificationRoutes from './routes/notification.routes.js';
 import serviceRoutes from './routes/service.routes.js';
 import utilsRoutes from './routes/utils.routes.js';
 import helmet from 'helmet';
+import ticketRoutes from './routes/ticket.routes.js';
 
 dotenv.config();
 connectDB();
@@ -31,6 +32,7 @@ app.use('/api/cash', cashRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/utils', utilsRoutes);
+app.use('/api/tickets', ticketRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
