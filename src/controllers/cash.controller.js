@@ -41,10 +41,6 @@ export const createFlow = async (req, res) => {
             ? cash.balance + amount
             : cash.balance - amount;
 
-        if (newBalance < 0) {
-            return res.status(400).json({ error: 'Insufficient funds' });
-        }
-
         cash.balance = newBalance;
         await cash.save();
 
