@@ -1,5 +1,23 @@
 import mongoose from "mongoose";
 
+const warrantySchema = new mongoose.Schema({
+  hasWarranty: { type: Boolean, default: false },
+  startDate: Date,
+  endDate: Date,
+  checkups: [
+    {
+      date: Date,
+      notified: { type: Boolean, default: false },
+      completed: { type: Boolean, default: false }
+    }
+  ],
+  status: {
+    type: String,
+    enum: ['activa', 'expirada', 'anulada'],
+    default: 'activa'
+  }
+}, { _id: false });
+
 const budgetSchema = new mongoose.Schema({
   bike_id: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -47,7 +65,9 @@ const budgetSchema = new mongoose.Schema({
       service_id: { type:mongoose.Schema.Types.ObjectId, ref: 'Service' },
       name: String,
       description: String,
-      price_usd: Number
+      price_usd: Number,
+      warranty: warrantySchema,
+      covered_by_warranty: { type: mongoose.Schema.Types.ObjectId, ref: 'Budget', default: null }
     }
   ],
   client_at_creation: {
@@ -55,6 +75,6 @@ const budgetSchema = new mongoose.Schema({
     ref: 'Client',
     required: true
   }
-});
+}, { timestamps: true });
 
 export default mongoose.model('Budget', budgetSchema);
