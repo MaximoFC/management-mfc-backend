@@ -43,7 +43,7 @@ router.get("/", async (req, res) => {
 
     res.json(matchedServices);
   } catch (err) {
-    console.error("❌ Error al buscar garantías activas:", err.message, err.stack);
+    console.error("Error al buscar garantías activas:", err.message, err.stack);
     res.status(500).json({ error: err.message });
   }
 });
