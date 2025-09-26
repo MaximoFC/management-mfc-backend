@@ -113,15 +113,22 @@ export const getBudgets = async (req, res) => {
     }
 
     const budgets = await Budget.find(query)
-      .populate("bike_id")
-      .populate("bike_id.current_owner_id");
+      .populate({
+        path: "bike_id",
+        populate: { path: "current_owner_id" },
+      });
 
-    res.json(budgets);
+    const filteredBudgets = warranty === "active"
+      ? budgets.filter(b =>
+          b.services.some(s => s.warranty?.status === "activa")
+        )
+      : budgets;
+
+    res.json(filteredBudgets);
   } catch (error) {
     res.status(500).json({ error: "Error al obtener presupuestos" });
   }
 };
-
 
 export const getAllBudgets = async (req, res) => {
   try {

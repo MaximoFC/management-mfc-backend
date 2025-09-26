@@ -21,37 +21,49 @@ router.get('/client/:clientId', getAllBudgetsOfClient);
 
 // --- Endpoint de garantías activas (antes de /:id) ---
 router.get("/active-warranties", async (req, res) => {
-  const { client_id, bike_id } = req.query;
-
   try {
-    if (!client_id || !bike_id) {
-      return res.status(400).json({ error: "Faltan parámetros client_id o bike_id" });
+    const { client_id, bike_id } = req.query;
+    const today = new Date();
+
+    const query = {
+      services: {
+        $elemMatch: {
+          "warranty.status": "activa",
+          "warranty.startDate": { $lte: today },
+          "warranty.endDate": { $gte: today },
+        },
+      },
+    };
+
+    if (client_id && mongoose.Types.ObjectId.isValid(client_id)) {
+      query.client_at_creation = client_id;
     }
 
-    if (!mongoose.Types.ObjectId.isValid(client_id) || !mongoose.Types.ObjectId.isValid(bike_id)) {
-      return res.status(400).json({ error: "IDs inválidos" });
+    if (bike_id && mongoose.Types.ObjectId.isValid(bike_id)) {
+      query.bike_id = bike_id;
     }
 
-    const budgets = await Budget.find({
-      client_at_creation: client_id,
-      bike_id: bike_id
-    }).lean();
+    const budgets = await Budget.find(query)
+      .populate({
+        path: "bike_id",
+        populate: { path: "current_owner_id" },
+      })
+      .lean();
 
-    const matchedServices = budgets.flatMap(b =>
-      (b.services || [])
-        .filter(s => {
-          const w = s.warranty;
-          return w?.hasWarranty && w.status === "activa" &&
-            new Date() >= new Date(w.startDate) &&
-            new Date() <= new Date(w.endDate);
-        })
-        .map(s => ({
-          serviceId: s.service_id?.toString(),
-          endDate: s.warranty.endDate
-        }))
-    );
-    res.json(matchedServices);
+    const sanitizedBudgets = budgets.map((b) => ({
+      ...b,
+      services: (b.services || []).filter((s) => {
+        const w = s.warranty;
+        return (
+          w?.hasWarranty &&
+          w.status === "activa" &&
+          new Date(w.startDate) <= today &&
+          new Date(w.endDate) >= today
+        );
+      }),
+    }));
 
+    res.json(sanitizedBudgets);
   } catch (err) {
     console.error("Error al buscar garantías activas:", err);
     res.status(500).json({ error: err.message });
