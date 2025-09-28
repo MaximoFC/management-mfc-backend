@@ -1,10 +1,26 @@
 import mongoose from "mongoose";
 
 const bikeSchema = new mongoose.Schema({
-    brand: String,
-    model: String,
-    color: String,
-    serialNumber: String,
+    brand: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    model: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    color: {
+        type: String,
+        trim: true
+    },
+    serialNumber: {
+        type: String,
+        unique: true,
+        sparse: true,
+        trim: true
+    },
     current_owner_id: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Client',
@@ -17,8 +33,8 @@ const bikeSchema = new mongoose.Schema({
     ownership_history: [
         {
             client_id: {type: mongoose.Schema.Types.ObjectId, ref: 'Client'},
-            from: Date,
-            to: Date
+            from: { type: Date },
+            to: { type: Date }
         }
     ]
 }, {

@@ -46,12 +46,9 @@ export const getClientsById = async (req, res) => {
 
         if (!client) return res.status(404).json({ error: "Client not found" });
 
-        const bikes = await Bike.find({ current_owner_id: client._id, active: true });
+        const bikes = await Bike.find({ current_owner_id: client._id });
 
-        const bikeIds = bikes.map(b => b._id);
-        const budgets = await Budget.find({ bike_id: { $in: bikeIds } }).sort({ createdAt: -1 });
-
-        res.json({ client, bikes, budgets });
+        res.json({ client, bikes });
     } catch (error) {
         res.status(500).json({ error: 'Error getting client' });
     }
