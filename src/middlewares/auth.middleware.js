@@ -2,11 +2,13 @@ import jwt from 'jsonwebtoken'
 
 export const tokenVerify = (req, res, next) => {
     const authHeader = req.headers.authorization;
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return res.status(401).json({ error: 'Access denied' });
     }
 
     const token = authHeader.split(" ")[1];
+
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
@@ -15,6 +17,6 @@ export const tokenVerify = (req, res, next) => {
         if (error.name === 'TokenExpiredError') {
             return res.status(401).json({ error: 'Token expired' });
         }
-        res.status(401).json({ error: 'Invalid token' });
+        return res.status(401).json({ error: 'Invalid token' });
     }
 };
