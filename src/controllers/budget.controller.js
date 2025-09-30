@@ -29,7 +29,8 @@ export const createBudget = async (req, res) => {
         if (s.warranty?.status === 'activa' && s.warranty.endDate && s.warranty.endDate > new Date()) {
           activeWarranties.push({
             serviceId: String(s.service_id?._id || s.service_id),
-            budgetId: b._id
+            budgetId: b._id,
+            endDate: s.warranty.endDate
           });
         }
       }
@@ -300,14 +301,10 @@ export const getActiveWarranties = async (req, res) => {
     const { client_id, bike_id } = req.query;
     const today = new Date();
 
-    const query = {
-      services: {
-        $elemMatch: {
-          "warranty.status": "activa",
-          "warranty.startDate": { $lte: today },
-          "warranty.endDate": { $gte: today }
-        },
-      },
+    let query = {
+      "services.warranty.status": "activa",
+      "services.warranty.startDate": { $lte: today },
+      "services.warranty.endDate": { $gte: today }
     };
 
     if (client_id && mongoose.Types.ObjectId.isValid(client_id)) {
@@ -321,30 +318,16 @@ export const getActiveWarranties = async (req, res) => {
     const budgets = await Budget.find(query)
       .populate({
         path: "bike_id",
-        populate: { path: "current_owner_id" },
+        populate: { path: "current_owner_id" }
       })
-      .populate("services.service_id")
-      .lean();
-    
-    const sanitized = budgets.map(b => ({
-      ...b,
-      services: (b.services || []).filter(s => {
-        const w = s.warranty;
-        return (
-          w?.hasWarranty && 
-          w.status === "activa" && 
-          new Date(w.startDate) <= today &&
-          new Date(w.endDate) >= today
-        );
-      }),
-    }));
+      .populate("services.service_id");
 
-    res.json(sanitized);
+    res.json(budgets);
   } catch (err) {
-    console.error("Error finding active warranties: ", err);
     res.status(500).json({ error: err.message });
   }
 };
+
 
 export const generatePdf = async (req, res) => {
   try {
