@@ -28,6 +28,10 @@ export const createNotification = async (req, res) => {
   try {
     const { type, message_body } = req.body;
 
+    if (!["alert", "reminder"].includes(type)) {
+      return res.status(400).json({ error: "Invalid notification type" });
+    }
+
     const notification = new Notification({ type, message_body });
     await notification.save();
 

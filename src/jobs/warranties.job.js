@@ -5,6 +5,7 @@ import Notification from "../models/notification.model.js";
 cron.schedule("0 0 * * *", async () => {
     console.log("Verificando garantías...");
     const notificationsToCreate = [];
+    let expiredCount = 0;
 
     try {
         const now = new Date();
@@ -23,6 +24,7 @@ cron.schedule("0 0 * * *", async () => {
                     if (warranty.endDate && warranty.endDate < now) {
                         warranty.status = "expirada";
                         modified = true;
+                        expiredCount++;
                     }
 
                     // 2. Revisar cada checkup
@@ -47,6 +49,7 @@ cron.schedule("0 0 * * *", async () => {
                             if (now > check.date && !check.completed) {
                                 warranty.status = "expirada";
                                 modified = true;
+                                expiredCount++;
                                 break;
                             }
                         }
@@ -63,7 +66,7 @@ cron.schedule("0 0 * * *", async () => {
             await Notification.insertMany(notificationsToCreate);
         }
 
-        console.log(`Revisadas: ${budgets.length}, Expiradas: ${expiredCount}, Notificaciones: ${notificationsToCreate.length}`);
+        console.log(`Revisadas: ${budgets.length}, Expiradas: ${expiredCount}, Notificaciones nuevas: ${notificationsToCreate.length}`);
     } catch (error) {
         console.error("Warranty cron error", error);
     }
