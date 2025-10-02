@@ -6,6 +6,6 @@ const cashSchema = new mongoose.Schema({
         required: true,
         default: 0
     }
-});
+}, { timestamps: true });
 
 export default mongoose.model('Cash', cashSchema);
