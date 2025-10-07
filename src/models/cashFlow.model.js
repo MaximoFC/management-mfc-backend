@@ -8,11 +8,13 @@ const cashFlowSchema = new mongoose.Schema({
     },
     amount: {
         type: Number,
-        required: true
+        required: true,
+        min: [0, "El monto debe ser mayor a 0"]
     },
     description: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     date: {
         type: Date,
@@ -23,6 +25,6 @@ const cashFlowSchema = new mongoose.Schema({
         ref: 'Employee',
         default: null
     }
-});
+}, { timestamps: true });
 
 export default mongoose.model('CashFlow', cashFlowSchema);

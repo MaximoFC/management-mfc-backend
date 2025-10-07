@@ -10,6 +10,7 @@ export const getBalance = async (req, res) => {
         }
         res.json({ balance: cash.balance });
     } catch (error) {
+        console.error("Error getting cash balance: ", error);
         res.status(500).json({ error: 'Error getting cash balance' });
     }
 };
@@ -17,9 +18,11 @@ export const getBalance = async (req, res) => {
 //Ver historial de movimientos
 export const flowList = async (req, res) => {
     try {
-        const flow = await CashFlow.find().sort({ date: -1 });
+        const flow = await CashFlow.find()
+            .sort({ date: -1 });
         res.json(flow);
     } catch (error) {
+        console.error("Error getting cash flow: ", error);
         res.status(500).json({ error: 'Error getting cash flow' });
     }
 }
@@ -28,8 +31,12 @@ export const flowList = async (req, res) => {
 export const createFlow = async (req, res) => {
     try {
         const { type, amount, description, employee_id } = req.body;
+
         if(!['ingreso', 'egreso'].includes(type)) {
-            return res.status(400).json({ error: 'Invalid type' });
+            return res.status(400).json({ error: 'Invalid type (ingreso/egreso)' });
+        }
+        if (!amount || Number(amount) <= 0) {
+            return res.status(400).json({ error: "El monto debe ser mayor a 0" });
         }
 
         let cash = await Cash.findOne();
@@ -37,12 +44,11 @@ export const createFlow = async (req, res) => {
             cash = await Cash.create({ balance: 0 });
         }
 
-        const newBalance = type === 'ingreso'
-            ? cash.balance + amount
-            : cash.balance - amount;
-
-        cash.balance = newBalance;
-        await cash.save();
+        const numericAmount = Number(amount);
+        const newBalance = 
+            type === 'ingreso'
+                ? cash.balance + numericAmount
+                : cash.balance - numericAmount;
 
         const flow = new CashFlow({
             type,
@@ -51,10 +57,17 @@ export const createFlow = async (req, res) => {
             employee_id: employee_id || null
         });
 
-        await flow.save();
+        cash.balance = newBalance;
 
-        res.status(201).json({ message: 'Flow registered', flow, newBalance });
+        await Promise.all([cash.save(), flow.save()]);
+
+        res.status(201).json({
+            message: "Flow registered",
+            flow,
+            newBalance
+        });
     } catch (error) {
+        console.error("Error registering flow: ", error);
         res.status(500).json({ error: 'Error registering flow' });
     }
 };

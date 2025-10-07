@@ -2,7 +2,8 @@ export const getCurrentEmployee = () => {
     const employee = localStorage.getItem('employee');
     try {
         return employee ? JSON.parse(employee) : null;
-    } catch {
+    } catch (err) {
+        console.error("Error parsing employee: ", err);
         return null;
     }
 };

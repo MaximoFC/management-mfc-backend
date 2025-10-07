@@ -3,6 +3,8 @@ import BikePart from '../models/bikepart.model.js';
 import Service from '../models/service.model.js';
 import Bike from '../models/bike.model.js';
 import getDollarBlueRate from '../utils/getDollarRate.js';
+import mongoose from 'mongoose';
+import { generateBudgetPdf } from '../services/pdf/budgetPdf.service.js';
 
 export const createBudget = async (req, res) => {
   try {
@@ -27,7 +29,8 @@ export const createBudget = async (req, res) => {
         if (s.warranty?.status === 'activa' && s.warranty.endDate && s.warranty.endDate > new Date()) {
           activeWarranties.push({
             serviceId: String(s.service_id?._id || s.service_id),
-            budgetId: b._id
+            budgetId: b._id,
+            endDate: s.warranty.endDate
           });
         }
       }
@@ -290,5 +293,51 @@ export const getAllBudgetsOfClient = async (req, res) => {
     res.json({ budgets });
   } catch (error) {
     res.status(500).json({ error: 'Error getting all budgets of client' });
+  }
+};
+
+export const getActiveWarranties = async (req, res) => {
+  try {
+    const { client_id, bike_id } = req.query;
+    const today = new Date();
+
+    let query = {
+      "services.warranty.status": "activa",
+      "services.warranty.startDate": { $lte: today },
+      "services.warranty.endDate": { $gte: today }
+    };
+
+    if (client_id && mongoose.Types.ObjectId.isValid(client_id)) {
+      query.client_at_creation = client_id;
+    }
+
+    if (bike_id && mongoose.Types.ObjectId.isValid(bike_id)) {
+      query.bike_id = bike_id;
+    }
+
+    const budgets = await Budget.find(query)
+      .populate({
+        path: "bike_id",
+        populate: { path: "current_owner_id" }
+      })
+      .populate("services.service_id");
+
+    res.json(budgets);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+export const generatePdf = async (req, res) => {
+  try {
+    const pdfBuffer = await generateBudgetPdf(req.body);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=presupuesto.pdf");
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error("Error generating PDF:", err);
+    res.status(500).json({ error: "Error generando PDF" });
   }
 };

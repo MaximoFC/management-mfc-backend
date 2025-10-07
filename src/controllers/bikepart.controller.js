@@ -1,6 +1,23 @@
 import BikePart from "../models/bikepart.model.js";
 import Notification from '../models/notification.model.js';
 
+const createLowStockNotification = async (part) => {
+  const exists = await Notification.findOne({
+    type: "alert",
+    bikepart_id: part._id,
+    read: false
+  });
+
+  if (!exists) {
+    await Notification.create({
+      type: "alert",
+      bikepart_id: part._id,
+      message_body: `Stock bajo: ${part.brand} ${part.description} (${part.stock} unidad/es)`,
+      read: false
+    });
+  }
+};
+
 export const getBikeParts = async (req, res) => {
   try {
     const bikeparts = await BikePart.find();

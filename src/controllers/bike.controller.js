@@ -4,26 +4,40 @@ import Client from "../models/client.model.js";
 import Budget from "../models/budget.model.js";
 
 export const createBike = async (req, res) => {
+    const { brand, model, current_owner_id } = req.body;
+
+    if (!brand || !model || !current_owner_id) {
+        return res.status(400).json({ error: "Missing required fields" });
+    }
+
     try {
-        console.log("Create bike body: ", req.body);
+        const owner = await Client.findById(current_owner_id);
+        if (!owner) {
+            return res.status(404).json({ error: "Owner client not found" });
+        }
+
         const bike = new Bike(req.body);
         await bike.save();
         res.status(201).json(bike);
     } catch (error) {
-        console.error(error);
+        if (error.code === 11000) {
+            return res.status(409).json({ error: "Bike with this serial number already exists" });
+        }
         res.status(500).json({ error: 'Error creating bike' });
     }
 };
 
 export const disableBike = async (req, res) => {
     try {
-        const bike = await Bike.findById(req.params.id);
+        const bike = await Bike.findByIdAndUpdate(
+            req.params.id,
+            { active: false },
+            { new: true }
+        );
+
         if (!bike) {
             return res.status(404).json({ error: 'Bike not found' });
         }
-
-        bike.active = false;
-        await bike.save();
 
         res.json({ message: 'Disabled bike', bike });
     } catch (error) {
@@ -38,7 +52,11 @@ export const getBikes = async (req, res) => {
         if (req.query.client_id) {
             query.current_owner_id = new mongoose.Types.ObjectId(req.query.client_id);
         }
-        const bikes = await Bike.find(query);
+
+        const bikes = await Bike.find(query)
+            .populate("current_owner_id", "name surname mobileNum")
+            .sort({ createdAt: -1 });
+
         res.json(bikes);
     } catch (error) {
         res.status(500).json({ error: 'Error getting bikes' });
@@ -74,7 +92,7 @@ export const transferBike = async (req, res) => {
 
         res.json({ message: 'Successful transfer', bike });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: error.message || "Error transferring bike"});
     }
 };
 
@@ -82,7 +100,10 @@ export const getBikeBudgets = async (req, res) => {
     try {
         const { bikeId } = req.params;
 
-        const budgets = await Budget.find({ bike_id: bikeId }).populate('bike_id').populate('employee_id');
+        const budgets = await Budget.find({ bike_id: bikeId })
+            .populate("bike_id")
+            .populate("employee_id")
+            .sort({ createdAt: -1 });
 
         res.json(budgets);
     } catch (error) {

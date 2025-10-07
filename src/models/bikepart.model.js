@@ -3,22 +3,28 @@ import mongoose from "mongoose";
 const BikePartSchema = new mongoose.Schema({
   code: { 
     type: String,
-    required: true 
+    required: true,
+    unique: true,
+    trim: true
   },
   brand: { 
     type: String, 
-    required: true 
+    required: true,
+    trim: true
   },
   type: { 
-    type: String 
+    type: String,
+    trim: true
   },
   description: { 
-    type: String 
+    type: String,
+    trim: true
   },
   stock: { 
     type: Number, 
     required: true, 
-    default: 0 
+    default: 0,
+    min: 0
   },
   price_usd: { 
     type: Number, 

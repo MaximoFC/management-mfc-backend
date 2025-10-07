@@ -8,7 +8,8 @@ const serviceSchema = new mongoose.Schema({
   },
   description: {
     type: String,
-    required: true
+    required: true,
+    trim: true
   },
   price_usd: {
     type: Number,

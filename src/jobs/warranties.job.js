@@ -5,10 +5,13 @@ import Notification from "../models/notification.model.js";
 cron.schedule("0 0 * * *", async () => {
     console.log("Verificando garantías...");
     const notificationsToCreate = [];
+    let expiredCount = 0;
 
     try {
         const now = new Date();
-        const budgets = await Budget.find({ "services.warranty.status": "activa" });
+        const budgets = await Budget.find({ "services.warranty.status": "activa" })
+            .populate("bike_id", "brand model")
+            .populate("bike_id.current_owner_id", "name surname");
 
         for (const budget of budgets) {
             let modified = false;
@@ -21,6 +24,7 @@ cron.schedule("0 0 * * *", async () => {
                     if (warranty.endDate && warranty.endDate < now) {
                         warranty.status = "expirada";
                         modified = true;
+                        expiredCount++;
                     }
 
                     // 2. Revisar cada checkup
@@ -33,7 +37,7 @@ cron.schedule("0 0 * * *", async () => {
                             if (!check.notified && now >= oneWeekBefore && now < check.date) {
                                 notificationsToCreate.push({
                                     type: "reminder",
-                                    message_body: `El servicio de ${service.name} de la bicicleta ${budget.bike_id} necesita revisión de garantía en una semana.`,
+                                    message_body: `El servicio de ${service.name} de la bicicleta ${budget.bike_id.brand} ${budget.bike_id.model} del cliente ${budget.bike_id.current_owner_id.name} ${budget.bike_id.current_owner_id.surname} necesita revisión de garantía en una semana.`,
                                     budget_id: budget._id,
                                     service_id: service.service_id,
                                 });
@@ -45,6 +49,8 @@ cron.schedule("0 0 * * *", async () => {
                             if (now > check.date && !check.completed) {
                                 warranty.status = "expirada";
                                 modified = true;
+                                expiredCount++;
+                                break;
                             }
                         }
                     }
@@ -60,8 +66,8 @@ cron.schedule("0 0 * * *", async () => {
             await Notification.insertMany(notificationsToCreate);
         }
 
-        console.log("✔ Garantías revisadas y actualizadas");
+        console.log(`Revisadas: ${budgets.length}, Expiradas: ${expiredCount}, Notificaciones nuevas: ${notificationsToCreate.length}`);
     } catch (error) {
-        console.error("❌ Warranty cron error", error);
+        console.error("Warranty cron error", error);
     }
 });

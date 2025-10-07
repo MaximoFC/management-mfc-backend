@@ -3,15 +3,20 @@ import mongoose, { mongo } from "mongoose";
 const clientSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: true
+        required: true,
+        trim: true,
+        minlength: 2
     },
     surname: {
         type: String,
-        required: true
+        required: true,
+        trim: true,
+        minlength: 2
     },
     mobileNum: {
         type: String,
-        required: true
+        required: true,
+        unique: true
     }
 }, {
     timestamps: true
