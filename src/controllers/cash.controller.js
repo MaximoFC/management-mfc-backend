@@ -28,15 +28,13 @@ export const flowList = async (req, res) => {
 }
 
 //Crear movimiento
-export const createFlow = async (req, res) => {
+export const createFlow = async ({ type, amount, description, employee_id }) => {
     try {
-        const { type, amount, description, employee_id } = req.body;
-
         if(!['ingreso', 'egreso'].includes(type)) {
-            return res.status(400).json({ error: 'Invalid type (ingreso/egreso)' });
+            throw new Error('Invalid type (ingreso/egreso)');
         }
         if (!amount || Number(amount) <= 0) {
-            return res.status(400).json({ error: "El monto debe ser mayor a 0" });
+            throw new Error("El monto debe ser mayor a 0");
         }
 
         let cash = await Cash.findOne();
@@ -52,7 +50,7 @@ export const createFlow = async (req, res) => {
 
         const flow = new CashFlow({
             type,
-            amount,
+            amount: numericAmount,
             description,
             employee_id: employee_id || null
         });
@@ -61,13 +59,20 @@ export const createFlow = async (req, res) => {
 
         await Promise.all([cash.save(), flow.save()]);
 
-        res.status(201).json({
-            message: "Flow registered",
-            flow,
-            newBalance
-        });
+        return { message: "Flow registered", flow, newBalance };
     } catch (error) {
         console.error("Error registering flow: ", error);
-        res.status(500).json({ error: 'Error registering flow' });
+        throw error;
     }
 };
+
+export const createFlowEndpoint = async (req, res) => {
+    try {
+        const { type, amount, description, employee_id } = req.body;
+        const result = await createFlow({ type, amount, description, employee_id });
+        res.status(201).json(result);
+    } catch (error) {
+        console.error("Error registering flow (endpoint): ", error);
+        res.status(500).json({ error: error.message });
+    }
+}

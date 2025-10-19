@@ -10,11 +10,19 @@ cron.schedule("0 0 * * *", async () => {
     try {
         const now = new Date();
         const budgets = await Budget.find({ "services.warranty.status": "activa" })
-            .populate("bike_id", "brand model")
+            .populate("bike_id", "brand model current_owner_id")
             .populate("bike_id.current_owner_id", "name surname");
 
         for (const budget of budgets) {
             let modified = false;
+            const bike = budget.bike_id;
+            const owner = bike?.current_owner_id;
+
+            // Si falta info crítica, lo saltamos
+            if (!bike || !owner) {
+                console.warn(`Presupuesto ${budget._id} con datos incompletos (bicicleta o dueño faltante)`);
+                continue;
+            }
 
             for (const service of budget.services) {
                 const warranty = service.warranty;
@@ -37,7 +45,7 @@ cron.schedule("0 0 * * *", async () => {
                             if (!check.notified && now >= oneWeekBefore && now < check.date) {
                                 notificationsToCreate.push({
                                     type: "reminder",
-                                    message_body: `El servicio de ${service.name} de la bicicleta ${budget.bike_id.brand} ${budget.bike_id.model} del cliente ${budget.bike_id.current_owner_id.name} ${budget.bike_id.current_owner_id.surname} necesita revisión de garantía en una semana.`,
+                                    message_body: `El servicio de ${service.name} de la bicicleta ${bike.brand} ${bike.model} del cliente ${owner.name} ${owner.surname} necesita revisión de garantía en una semana.`,
                                     budget_id: budget._id,
                                     service_id: service.service_id,
                                 });
@@ -70,4 +78,4 @@ cron.schedule("0 0 * * *", async () => {
     } catch (error) {
         console.error("Warranty cron error", error);
     }
-});
+})

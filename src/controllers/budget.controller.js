@@ -1,10 +1,12 @@
 import Budget from '../models/budget.model.js';
+import Cashflow from "../models/cashFlow.model.js";
 import BikePart from '../models/bikepart.model.js';
 import Service from '../models/service.model.js';
 import Bike from '../models/bike.model.js';
 import getDollarBlueRate from '../utils/getDollarRate.js';
 import mongoose from 'mongoose';
 import { generateBudgetPdf } from '../services/pdf/budgetPdf.service.js';
+import { createFlow } from './cash.controller.js';
 
 export const createBudget = async (req, res) => {
   try {
@@ -151,38 +153,76 @@ export const getAllBudgets = async (req, res) => {
 export const updateBudgetState = async (req, res) => {
   try {
     const { id } = req.params;
-    const { state, payment_date, giveWarranty, warrantyServices } = req.body;
+    const { state, payment_date, giveWarranty, warrantyServices, employee_id = null } = req.body;
 
-    const budget = await Budget.findById(id).populate('parts.bikepart_id');
+    const budget = await Budget.findById(id)
+      .populate('parts.bikepart_id')
+      .populate('services.service_id');
     if (!budget) return res.status(404).json({ message: 'Budget not found' });
 
     const validWarrantyServices = Array.isArray(warrantyServices)
       ? warrantyServices.map(String)
       : [];
 
-    if (state === 'en proceso' && budget.state !== 'en proceso') {
+    const current = budget.state;
+    const next = state;
+
+    //Transiciones válidas
+    const validTransitions = {
+      iniciado: ['en proceso', 'terminado', 'pagado', 'retirado'],
+      'en proceso': ['terminado', 'pagado', 'retirado'],
+      terminado: ['pagado', 'retirado'],
+      pagado: ['retirado'],
+      retirado: []
+    };
+
+    if (!validTransitions[current]?.includes(next)) {
+      return res.status(400).json({
+        message: `Transición no permitida: no se puede pasar de ${current} a ${next}.`
+      });
+    }
+
+    //Funciones auxiliares
+    const discountStock = async () => {
       for (const item of budget.parts) {
         const part = await BikePart.findById(item.bikepart_id._id);
-        if (!part) return res.status(404).json({ message: 'BikePart not found' });
-
+        if (!part) throw new Error('Bikepart not found');
         if (part.stock < item.amount) {
-          return res.status(400).json({
-            message: `Stock insuficiente para ${part.description}. Disponible: ${part.stock}, requerido: ${item.amount}`
-          });
+          throw new Error(
+            `Stock insuficiente para ${part.description}. Disponible: ${part.stock}, requerido: ${item.amount}`
+          );
         }
-
         part.stock -= item.amount;
         await part.save();
       }
-    }
 
-    if (state === 'pagado' && budget.state !== 'pagado') {
-      if (payment_date) {
-        budget.payment_date = new Date(payment_date);
+      for (const item of budget.parts) {
+        const part = await BikePart.findById(item.bikepart_id._id);
+        part.stock -= item.amount;
+        await part.save();
       }
-    }
+    };
 
-    if (state === 'terminado' && giveWarranty) {
+    const registerPayment = async (budget, employee_id = null) => {
+      if (!budget) throw new Error("Budget not found");
+
+      const amount = budget.total_ars || (budget.total_usd * budget.dollar_rate_used);
+      const bike = await Bike.findById(budget.bike_id).populate('current_owner_id');
+      const client = bike?.current_owner_id;
+      const clientName = client ? `${client.name} ${client.surname}`.trim() : 'Cliente desconocido';
+
+      await createFlow({
+        type: 'ingreso',
+        amount,
+        description: `Pago recibido por presupuesto de ${clientName}`,
+        employee_id
+      });
+
+      budget.payment = { status: 'pagado', date: new Date() };
+    };
+
+    const createWarranty = async () => {
+      if (!giveWarranty) return;
       const startDate = new Date();
       const endDate = new Date(startDate);
       endDate.setMonth(endDate.getMonth() + 6);
@@ -191,38 +231,62 @@ export const updateBudgetState = async (req, res) => {
       firstCheck.setMonth(firstCheck.getMonth() + 3);
 
       for (const service of budget.services) {
-        const serviceIdStr = String(service.service_id);
+        const serviceIdStr = String(service.service_id._id);
         if (validWarrantyServices.includes(serviceIdStr)) {
           service.warranty = {
             hasWarranty: true,
             startDate,
             endDate,
-            checkups: [
-              { date: firstCheck, notified: false, completed: false }
-            ],
+            checkups: [{ date: firstCheck, notified: false, completed: false }],
             status: 'activa'
           };
         }
       }
+    };
+
+    if (current === 'iniciado' && next === 'en proceso') {
+      await discountStock();
     }
 
-    budget.state = state;
-
-    if (req.body.action === "completeCheckup") {
-      const { serviceId, checkupDate } = req.body;
-
-      const service = budget.services.find(s => String(s.service_id) === serviceId);
-      if (service && service.warranty?.checkups?.length) {
-        const check = service.warranty.checkups.find(c => new Date(c.date).getTime() === new Date(checkupDate).getTime());
-        if (check) {
-          check.completed = true;
-        }
-      }
+    if (current === 'iniciado' && next === 'terminado') {
+      await discountStock();
+      createWarranty();
     }
 
+    if (current === 'iniciado' && next === 'pagado') {
+      await discountStock();
+      await registerPayment(budget, employee_id);
+    }
+
+    if (current === 'iniciado' && next === 'retirado') {
+      await discountStock();
+      await registerPayment(budget, employee_id);
+      createWarranty();
+      budget.delivery_date = new Date();
+    }
+
+    if (current === 'en proceso' && next === 'pagado') {
+      await registerPayment(budget, employee_id);
+    }
+
+    if (current === 'en proceso' && next === 'terminado') {
+      createWarranty();
+    }
+
+    if (current === 'terminado' && next === 'pagado') {
+      await registerPayment(budget, employee_id);
+    }
+
+    if (current === 'pagado' && next === 'retirado') {
+      budget.delivery_date = new Date();
+    }
+
+    budget.state = next;
     await budget.save();
+
     res.json(budget);
   } catch (err) {
+    console.error('Error updating state: ', err);
     res.status(500).json({ message: err.message });
   }
 };
