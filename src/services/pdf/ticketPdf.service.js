@@ -11,11 +11,14 @@ const fonts = {
 const printer = new PdfPrinter(fonts);
 
 export const generateTicket = async (data) => {
-    const { client, services, total_ars } = data;
+    const { client, services = [], total_ars = 0 } = data;
 
-    const body = services.map((s, i) => [
-        { text: `${i + 1}. ${s.name}`, alignment: "left" }
-    ]);
+    const body = 
+        services && services.length > 0
+            ? services.map((s, i) => [
+                { text: `${i + 1}. ${s.name}`, alignment: "left" }
+            ])
+            : [[{ text: "Sin servicios", alignment: "left", color: "gray" }]];
 
     const docDefinition = {
         pageSize: { width: 200, height: "auto" },

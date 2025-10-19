@@ -195,12 +195,6 @@ export const updateBudgetState = async (req, res) => {
         part.stock -= item.amount;
         await part.save();
       }
-
-      for (const item of budget.parts) {
-        const part = await BikePart.findById(item.bikepart_id._id);
-        part.stock -= item.amount;
-        await part.save();
-      }
     };
 
     const registerPayment = async (budget, employee_id = null) => {
