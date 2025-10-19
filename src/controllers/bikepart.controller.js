@@ -41,6 +41,7 @@ export const createBikeParts = async (req, res) => {
 
     res.status(201).json(part);
   } catch (err) {
+    console.error("Error creando repuesto:", err.message);
     res.status(400).json({ error: err.message });
   }
 }

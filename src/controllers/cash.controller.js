@@ -43,6 +43,10 @@ export const createFlow = async ({ type, amount, description, employee_id }) => 
         }
 
         const numericAmount = Number(amount);
+        if (isNaN(numericAmount) || numericAmount <= 0) {
+            throw new Error("El monto debe ser mayor a 0");
+        }
+
         const newBalance = 
             type === 'ingreso'
                 ? cash.balance + numericAmount
@@ -69,6 +73,7 @@ export const createFlow = async ({ type, amount, description, employee_id }) => 
 export const createFlowEndpoint = async (req, res) => {
     try {
         const { type, amount, description, employee_id } = req.body;
+
         const result = await createFlow({ type, amount, description, employee_id });
         res.status(201).json(result);
     } catch (error) {
