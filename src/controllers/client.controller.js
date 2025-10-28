@@ -27,13 +27,13 @@ export const getClients = async (req, res) => {
         if (q) {
             filter = {
                 $or: [
-                    { name: new RegExp(q, 'i') },
-                    { surname: new RegExp(q, 'i') },
-                    { mobileNum: new RegExp(q, 'i') },
+                    { name: { $regex: q, $options: 'i' } },
+                    { surname: { $regex: q, $options: 'i' } },
+                    { mobileNum: { $regex: q, $options: 'i' } }
                 ]
             };
         }
-        const clients = await Client.find(filter);
+        const clients = await Client.find(filter).sort({ createdAt: -1 }).lean();
         res.json(clients);
     } catch (error) {
         res.status(500).json({ error: 'Error getting clients' });

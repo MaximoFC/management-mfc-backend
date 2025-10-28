@@ -9,9 +9,12 @@ cron.schedule("0 0 * * *", async () => {
 
     try {
         const now = new Date();
+
         const budgets = await Budget.find({ "services.warranty.status": "activa" })
             .populate("bike_id", "brand model current_owner_id")
             .populate("bike_id.current_owner_id", "name surname");
+
+        const budgetsToSave = [];
 
         for (const budget of budgets) {
             let modified = false;
@@ -65,14 +68,12 @@ cron.schedule("0 0 * * *", async () => {
                 }
             }
 
-            if (modified) {
-                await budget.save();
-            }
+            if (modified) budgetsToSave.push(budget.save());
         }
 
-        if (notificationsToCreate.length) {
-            await Notification.insertMany(notificationsToCreate);
-        }
+        if (budgetsToSave.length) await Promise.all(budgetsToSave);
+
+        if (notificationsToCreate.length) await Notification.insertMany(notificationsToCreate);     
 
         console.log(`Revisadas: ${budgets.length}, Expiradas: ${expiredCount}, Notificaciones nuevas: ${notificationsToCreate.length}`);
     } catch (error) {

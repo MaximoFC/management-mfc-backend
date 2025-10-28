@@ -21,7 +21,7 @@ router.post('/form', async (req, res) => {
     try {
         const pdfBuffer = await generateFormPdf(req.body);
 
-        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename=formulario.pdf');
         res.send(pdfBuffer);
     } catch (error) {

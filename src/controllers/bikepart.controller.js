@@ -2,19 +2,23 @@ import BikePart from "../models/bikepart.model.js";
 import Notification from '../models/notification.model.js';
 
 const createLowStockNotification = async (part) => {
-  const exists = await Notification.findOne({
-    type: "alert",
-    bikepart_id: part._id,
-    read: false
-  });
-
-  if (!exists) {
-    await Notification.create({
+  try {
+    const exists = await Notification.findOne({
       type: "alert",
       bikepart_id: part._id,
-      message_body: `Stock bajo: ${part.brand} ${part.description} (${part.stock} unidad/es)`,
       read: false
     });
+
+    if (!exists) {
+      await Notification.create({
+        type: "alert",
+        bikepart_id: part._id,
+        message_body: `Stock bajo: ${part.brand} ${part.description} (${part.stock} unidad/es)`,
+        read: false
+      });
+    }
+  } catch (error) {
+    console.error("Error creando notificación de stock bajo:", error.message);
   }
 };
 
@@ -33,10 +37,7 @@ export const createBikeParts = async (req, res) => {
     await part.save();
 
     if (part.stock <= 5) {
-      await Notification.create({
-        type: "alert",
-        message_body: `Stock bajo: ${part.brand} ${part.description} (${part.stock} unidad/es)`
-      });
+      await createLowStockNotification(part);
     }
 
     res.status(201).json(part);
@@ -62,18 +63,7 @@ export const updateBikePart = async (req, res) => {
     if (!part) return res.status(404).json({ error: 'No encontrado' });
 
     if (part.stock <= 5) {
-      const existing = await Notification.findOne({
-        type: 'alert',
-        message_body: { $regex: part.description, $options: 'i' },
-        seen: false,
-      });
-
-      if (!existing) {
-        await Notification.create({
-          type: "alert",
-          message_body: `Stock bajo: ${part.brand} ${part.description} (${part.stock} unidad/es)`
-        })
-      }
+      await createLowStockNotification(part);
     }
 
     res.json(part);
@@ -86,6 +76,9 @@ export const deleteBikePart = async (req, res) => {
   try {
     const part = await BikePart.findByIdAndDelete(req.params.id);
     if (!part) return res.status(404).json({ error: 'No encontrado' });
+
+    await Notification.deleteMany({ bikepart_id: part._id });
+    
     res.json({ message: 'Eliminado con éxito' });
   } catch (err) {
     res.status(500).json({ error: err.message });

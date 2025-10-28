@@ -17,7 +17,7 @@ export const getNotificationById = async (req, res) => {
 
 export const getAllNotifications = async (req, res) => {
   try {
-    const notifications = await Notification.find().sort({ creation_date: -1 });
+    const notifications = await Notification.find().sort({ creation_date: -1 }).lean();
     res.json(notifications);
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener notificaciones' });

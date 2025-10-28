@@ -55,7 +55,8 @@ export const getBikes = async (req, res) => {
 
         const bikes = await Bike.find(query)
             .populate("current_owner_id", "name surname mobileNum")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
         res.json(bikes);
     } catch (error) {

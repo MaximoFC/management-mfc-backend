@@ -15,12 +15,15 @@ router.get('/', getBikeParts);
 router.get('/search', async (req, res) => {
   try {
     const { q } = req.query;
+    if (!q) return res.json([]);
+
+    const regex = new RegExp(q, "i");
     const results = await BikePart.find({
       $or: [
-        { code: new RegExp(q, "i") },
-        { brand: new RegExp(q, "i") },
-        { description: new RegExp(q, "i") },
-        { category: new RegExp(q, "i") }
+        { code: regex },
+        { brand: regex },
+        { description: regex },
+        { category: regex }
       ]
     });
     res.json(results);

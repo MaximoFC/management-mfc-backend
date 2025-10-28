@@ -13,20 +13,25 @@ export const generateBudgetPdf = async (budgetData) => {
     };
 
     const printer = new PdfPrinter(fonts);
-
     const logoPath = path.join(process.cwd(), 'src', 'assets', 'logo.jpg');
-    const logoBase64 = fs.readFileSync(logoPath).toString('base64');
+    
+    const logoBase64 = "";
+    if (fs.existsSync(logoPath)) {
+        logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
+    }
+
+    const items = Array.isArray(budgetData.items) ? budgetData.items : [];
 
     // --- Preparar filas de servicios y repuestos ---
-    const serviceRows = (budgetData.items || [])
-        .filter(i => i.name.toLowerCase().includes('service'))
+    const serviceRows = items
+        .filter(i => i.name?.toLowerCase().includes('service'))
         .map(s => [
             s.name,
             `$${s.price.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
         ]);
 
-    const partRows = (budgetData.items || [])
-        .filter(i => !i.name.toLowerCase().includes('service'))
+    const partRows = items
+        .filter(i => !i.name?.toLowerCase().includes('service'))
         .map(p => [
             p.name,
             p.qty,
@@ -91,8 +96,9 @@ export const generateBudgetPdf = async (budgetData) => {
     const chunks = [];
 
     return new Promise((resolve, reject) => {
-        pdfDoc.on('data', chunk => chunks.push(chunk));
-        pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+        pdfDoc.on("data", (chunk) => chunks.push(chunk));
+        pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+        pdfDoc.on("error", reject);
         pdfDoc.end();
     });
 };

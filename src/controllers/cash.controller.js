@@ -4,10 +4,7 @@ import CashFlow from "../models/cashFlow.model.js";
 //Obtener saldo de la caja
 export const getBalance = async (req, res) => {
     try {
-        let cash = await Cash.findOne();
-        if (!cash) {
-            cash = await Cash.create({ balance: 0 });
-        }
+        const cash = await Cash.findOne() || await Cash.create({ balance: 0 });
         res.json({ balance: cash.balance });
     } catch (error) {
         console.error("Error getting cash balance: ", error);
@@ -37,15 +34,12 @@ export const createFlow = async ({ type, amount, description, employee_id }) => 
             throw new Error("El monto debe ser mayor a 0");
         }
 
-        let cash = await Cash.findOne();
-        if (!cash) {
-            cash = await Cash.create({ balance: 0 });
-        }
-
         const numericAmount = Number(amount);
-        if (isNaN(numericAmount) || numericAmount <= 0) {
+        if (!numericAmount || numericAmount <= 0 || isNaN(numericAmount)) {
             throw new Error("El monto debe ser mayor a 0");
         }
+
+        const cash = await Cash.findOne() || await Cash.create({ balance: 0 });
 
         const newBalance = 
             type === 'ingreso'
