@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { generateBudgetPdf } from '../services/pdf/budgetPdf.service.js';
 import { createFlow } from './cash.controller.js';
 
+// Crear presupuesto
 export const createBudget = async (req, res) => {
   try {
     const { bike_id, employee_id, services = [], bikeparts = [], applyWarranty = [] } = req.body;
@@ -16,15 +17,18 @@ export const createBudget = async (req, res) => {
       return res.status(400).json({ message: 'Debe incluir al menos una pieza o un servicio' });
     }
 
-    const bike = await Bike.findById(bike_id);
+    const bike = await Bike.findById(bike_id).lean();
     if (!bike) return res.status(404).json({ message: 'Bike not found' });
 
     const dollarRate = await getDollarBlueRate();
 
     let total_usd = 0;
 
-    const pastBudgets = await Budget.find({ bike_id, client_at_creation: bike.current_owner_id }).populate('services.service_id');
+    const pastBudgets = await Budget.find({ bike_id, client_at_creation: bike.current_owner_id })
+      .populate('services.service_id', '_id name')
+      .lean();
 
+    // Buscar garantías activas
     const activeWarranties = [];
     for (const b of pastBudgets) {
       for (const s of b.services) {
@@ -38,34 +42,37 @@ export const createBudget = async (req, res) => {
       }
     }
 
-    // Procesar piezas con precios históricos
-    const partItems = [];
-    for (const item of bikeparts) {
-      const part = await BikePart.findById(item.bikepart_id);
-      if (!part) return res.status(404).json({ message: 'BikePart not found' });
+    // Buscar piezas y servicios en paralelo
+    const [partsDocs, servicesDocs] = await Promise.all([
+      Promise.all(bikeparts.map(p => BikePart.findById(p.bikepart_id).lean())),
+      Promise.all(services.map(s => Service.findById(s.service_id).lean()))
+    ]);
+
+    // Procesar piezas
+    const partItems = bikeparts.map((item, i) => {
+      const part = partsDocs[i];
+      if (!part) throw new Error('BikePart not found');
 
       const subtotal = part.price_usd * item.amount;
       total_usd += subtotal;
 
-      partItems.push({
+      return {
         bikepart_id: part._id,
         description: part.description,
         unit_price_usd: part.price_usd,
         amount: item.amount,
         subtotal_usd: subtotal
-      });
-    }
+      };
+    });
 
-    // Procesar servicios con precios históricos
-    const serviceItems = [];
-    for (const item of services) {
-      const service = await Service.findById(item.service_id);
-      if (!service) return res.status(404).json({ message: 'Service not found' });
+    // Procesar servicios
+    const serviceItems = services.map((item, i) => {
+      const service = servicesDocs[i];
+      if (!service) throw new Error('Service not found');
 
       let price = service.price_usd;
       let coveredBy = null;
 
-      // Solo aplicar garantía si el usuario lo decidió en el frontend
       const match = activeWarranties.find(w => w.serviceId === String(service._id));
       const userWantsWarranty = applyWarranty.includes(String(service._id));
 
@@ -76,14 +83,14 @@ export const createBudget = async (req, res) => {
 
       total_usd += price;
 
-      serviceItems.push({
+      return {
         service_id: service._id,
         name: service.name,
         description: service.description,
         price_usd: price,
         covered_by_warranty: coveredBy
-      });
-    }
+      };
+    });
 
     const total_ars = total_usd * dollarRate;
 
@@ -104,15 +111,17 @@ export const createBudget = async (req, res) => {
     await budget.save();
     res.status(201).json(budget);
   } catch (err) {
+    console.error('Error creating budget:', err);
     res.status(500).json({ message: err.message });
   }
 };
 
+// Obtener presupuestos (filtro de garantías)
 export const getBudgets = async (req, res) => {
   try {
     const { warranty } = req.query;
-
     let query = {};
+
     if (warranty === "active") {
       query = { "services.warranty.status": "activa" };
     }
@@ -120,13 +129,13 @@ export const getBudgets = async (req, res) => {
     const budgets = await Budget.find(query)
       .populate({
         path: "bike_id",
-        populate: { path: "current_owner_id" },
-      });
+        select: "brand model current_owner_id",
+        populate: { path: "current_owner_id", select: "name surname" },
+      })
+      .lean();
 
     const filteredBudgets = warranty === "active"
-      ? budgets.filter(b =>
-          b.services.some(s => s.warranty?.status === "activa")
-        )
+      ? budgets.filter(b => b.services.some(s => s.warranty?.status === "activa"))
       : budgets;
 
     res.json(filteredBudgets);
@@ -135,21 +144,26 @@ export const getBudgets = async (req, res) => {
   }
 };
 
+// Obtener todos los presupuestos
 export const getAllBudgets = async (req, res) => {
   try {
     const budgets = await Budget.find()
       .populate({
         path: 'bike_id',
-        populate: { path: 'current_owner_id' }
+        select: 'brand model current_owner_id',
+        populate: { path: 'current_owner_id', select: 'name surname' }
       })
-      .populate('employee_id')
-      .populate('parts.bikepart_id');
+      .populate('employee_id', 'name surname')
+      .populate('parts.bikepart_id', 'description')
+      .lean();
+
     res.json(budgets);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
+// Actualizar estado del presupuesto
 export const updateBudgetState = async (req, res) => {
   try {
     const { id } = req.params;
@@ -167,7 +181,6 @@ export const updateBudgetState = async (req, res) => {
     const current = budget.state;
     const next = state;
 
-    //Transiciones válidas
     const validTransitions = {
       iniciado: ['en proceso', 'terminado', 'pagado', 'retirado'],
       'en proceso': ['terminado', 'pagado', 'retirado'],
@@ -182,9 +195,9 @@ export const updateBudgetState = async (req, res) => {
       });
     }
 
-    //Funciones auxiliares
+    // Funciones auxiliares
     const discountStock = async () => {
-      for (const item of budget.parts) {
+      await Promise.all(budget.parts.map(async (item) => {
         const part = await BikePart.findById(item.bikepart_id._id);
         if (!part) throw new Error('Bikepart not found');
         if (part.stock < item.amount) {
@@ -194,12 +207,10 @@ export const updateBudgetState = async (req, res) => {
         }
         part.stock -= item.amount;
         await part.save();
-      }
+      }));
     };
 
     const registerPayment = async (budget, employee_id = null) => {
-      if (!budget) throw new Error("Budget not found");
-
       const amount = budget.total_ars || (budget.total_usd * budget.dollar_rate_used);
       const bike = await Bike.findById(budget.bike_id).populate('current_owner_id');
       const client = bike?.current_owner_id;
@@ -215,12 +226,11 @@ export const updateBudgetState = async (req, res) => {
       budget.payment = { status: 'pagado', date: new Date() };
     };
 
-    const createWarranty = async () => {
+    const createWarranty = () => {
       if (!giveWarranty) return;
       const startDate = new Date();
       const endDate = new Date(startDate);
       endDate.setMonth(endDate.getMonth() + 6);
-
       const firstCheck = new Date(startDate);
       firstCheck.setMonth(firstCheck.getMonth() + 3);
 
@@ -238,46 +248,18 @@ export const updateBudgetState = async (req, res) => {
       }
     };
 
-    if (current === 'iniciado' && next === 'en proceso') {
+    // Transiciones válidas
+    if (current === 'iniciado' && ['en proceso', 'terminado', 'pagado', 'retirado'].includes(next)) {
       await discountStock();
     }
-
-    if (current === 'iniciado' && next === 'terminado') {
-      await discountStock();
-      createWarranty();
-    }
-
-    if (current === 'iniciado' && next === 'pagado') {
-      await discountStock();
-      await registerPayment(budget, employee_id);
-    }
-
-    if (current === 'iniciado' && next === 'retirado') {
-      await discountStock();
-      await registerPayment(budget, employee_id);
-      createWarranty();
-      budget.delivery_date = new Date();
-    }
-
-    if (current === 'en proceso' && next === 'pagado') {
-      await registerPayment(budget, employee_id);
-    }
-
-    if (current === 'en proceso' && next === 'terminado') {
-      createWarranty();
-    }
-
-    if (current === 'terminado' && next === 'pagado') {
-      await registerPayment(budget, employee_id);
-    }
-
-    if (current === 'pagado' && next === 'retirado') {
-      budget.delivery_date = new Date();
+    if (['en proceso', 'terminado', 'pagado'].includes(next)) {
+      if (next === 'pagado') await registerPayment(budget, employee_id);
+      if (['terminado', 'retirado'].includes(next)) createWarranty();
+      if (next === 'retirado') budget.delivery_date = new Date();
     }
 
     budget.state = next;
     await budget.save();
-
     res.json(budget);
   } catch (err) {
     console.error('Error updating state: ', err);
@@ -285,17 +267,20 @@ export const updateBudgetState = async (req, res) => {
   }
 };
 
+// Obtener por ID
 export const getBudgetById = async (req, res) => {
   try {
     const { id } = req.params;
     const budget = await Budget.findById(id)
       .populate({
         path: "bike_id",
-        populate: {path: "current_owner_id"}
+        select: "brand model current_owner_id",
+        populate: { path: "current_owner_id", select: "name surname" }
       })
-      .populate('employee_id')
-      .populate('parts.bikepart_id')
-      .populate('services.service_id');
+      .populate('employee_id', 'name surname')
+      .populate('parts.bikepart_id', 'description')
+      .populate('services.service_id', 'name description price_usd')
+      .lean();
 
     if (!budget) return res.status(404).json({ message: 'Presupuesto no encontrado' });
     res.json(budget);
@@ -304,11 +289,11 @@ export const getBudgetById = async (req, res) => {
   }
 };
 
+// Eliminar presupuesto
 export const deleteBudget = async (req, res) => {
   try {
     const { id } = req.params;
     const budget = await Budget.findByIdAndDelete(id);
-
     if (!budget) return res.status(404).json({ message: 'Presupuesto no encontrado' });
     res.json({ message: 'Presupuesto eliminado correctamente' });
   } catch (err) {
@@ -316,37 +301,39 @@ export const deleteBudget = async (req, res) => {
   }
 };
 
+// Presupuestos de una bicicleta
 export const getBikeBudgets = async (req, res) => {
   try {
     const { id } = req.params;
     const budgets = await Budget.find({ bike_id: id })
-      .populate('employee_id')
-      .populate('parts.bikepart_id')
-      .populate('services.service_id');
-    
+      .populate('employee_id', 'name surname')
+      .populate('parts.bikepart_id', 'description')
+      .populate('services.service_id', 'name description')
+      .lean();
+
     res.json(budgets);
   } catch (error) {
-    res.status(500).json({message: error.message});
+    res.status(500).json({ message: error.message });
   }
 };
 
+// Presupuestos de un cliente
 export const getAllBudgetsOfClient = async (req, res) => {
   try {
     const { clientId } = req.params;
-
     const bikes = await Bike.find({
       $or: [
         { current_owner_id: clientId },
         { 'ownership_history.client_id': clientId }
       ]
-    });
+    }).lean();
 
     const bikeIds = bikes.map(b => b._id);
-
-    const budgets = await Budget.find({bike_id: {$in: bikeIds}})
-      .populate('bike_id')
-      .populate('employee_id')
-      .sort({createdAt: -1});
+    const budgets = await Budget.find({ bike_id: { $in: bikeIds } })
+      .populate('bike_id', 'brand model')
+      .populate('employee_id', 'name surname')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({ budgets });
   } catch (error) {
@@ -354,6 +341,7 @@ export const getAllBudgetsOfClient = async (req, res) => {
   }
 };
 
+// Garantías activas
 export const getActiveWarranties = async (req, res) => {
   try {
     const { client_id, bike_id } = req.query;
@@ -365,20 +353,17 @@ export const getActiveWarranties = async (req, res) => {
       "services.warranty.endDate": { $gte: today }
     };
 
-    if (client_id && mongoose.Types.ObjectId.isValid(client_id)) {
-      query.client_at_creation = client_id;
-    }
-
-    if (bike_id && mongoose.Types.ObjectId.isValid(bike_id)) {
-      query.bike_id = bike_id;
-    }
+    if (client_id && mongoose.Types.ObjectId.isValid(client_id)) query.client_at_creation = client_id;
+    if (bike_id && mongoose.Types.ObjectId.isValid(bike_id)) query.bike_id = bike_id;
 
     const budgets = await Budget.find(query)
       .populate({
         path: "bike_id",
-        populate: { path: "current_owner_id" }
+        select: "brand model current_owner_id",
+        populate: { path: "current_owner_id", select: "name surname" }
       })
-      .populate("services.service_id");
+      .populate("services.service_id", "name description")
+      .lean();
 
     res.json(budgets);
   } catch (err) {
@@ -386,11 +371,10 @@ export const getActiveWarranties = async (req, res) => {
   }
 };
 
-
+// Generar PDF
 export const generatePdf = async (req, res) => {
   try {
     const pdfBuffer = await generateBudgetPdf(req.body);
-
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=presupuesto.pdf");
     res.send(pdfBuffer);
