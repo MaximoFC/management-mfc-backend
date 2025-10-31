@@ -151,7 +151,7 @@ export const getAllBudgets = async (req, res) => {
       .populate({
         path: 'bike_id',
         select: 'brand model current_owner_id',
-        populate: { path: 'current_owner_id', select: 'name surname' }
+        populate: { path: 'current_owner_id', select: 'name surname mobileNum' }
       })
       .populate('employee_id', 'name surname')
       .populate('parts.bikepart_id', 'description')

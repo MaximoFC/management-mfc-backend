@@ -15,7 +15,7 @@ export const generateBudgetPdf = async (budgetData) => {
     const printer = new PdfPrinter(fonts);
     const logoPath = path.join(process.cwd(), 'src', 'assets', 'logo.jpg');
     
-    const logoBase64 = "";
+    let logoBase64 = "";
     if (fs.existsSync(logoPath)) {
         logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
     }
@@ -24,19 +24,20 @@ export const generateBudgetPdf = async (budgetData) => {
 
     // --- Preparar filas de servicios y repuestos ---
     const serviceRows = items
-        .filter(i => i.name?.toLowerCase().includes('service'))
+        .filter(i => i.type === "service")
         .map(s => [
             s.name,
             `$${s.price.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
         ]);
 
     const partRows = items
-        .filter(i => !i.name?.toLowerCase().includes('service'))
+        .filter(i => i.type === "part")
         .map(p => [
             p.name,
             p.qty,
             `$${(p.price * p.qty).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
         ]);
+
 
     const docDefinition = {
         content: [
