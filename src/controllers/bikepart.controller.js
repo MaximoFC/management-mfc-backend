@@ -24,7 +24,25 @@ const createLowStockNotification = async (part) => {
 
 export const getBikeParts = async (req, res) => {
   try {
-    const bikeparts = await BikePart.find();
+    const { search, type } = req.query;
+
+    const filter = {};
+
+    if (search && search.trim() !== "") {
+      const regex = new RegExp(search.trim(), "i");
+      filter.$or = [
+        { brand: regex },
+        { description: regex },
+        { code: regex }
+      ];
+    }
+
+    if (type && type.trim() !== "") {
+      filter.type = type.trim();
+    }
+
+    const bikeparts = await BikePart.find(filter).sort({ brand: 1 });
+
     res.json(bikeparts);
   } catch (error) {
     res.status(500).json({ error: error.message });
