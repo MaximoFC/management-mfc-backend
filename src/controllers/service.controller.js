@@ -2,7 +2,18 @@ import Service from '../models/service.model.js';
 
 export const getAllServices = async (req, res) => {
   try {
-    const services = await Service.find().sort({ createdAt: -1 }).lean();
+    const { q } = req.query;
+
+    const filter = q
+      ? {
+        $or: [
+          { name: { $regex:q, $options: "i" } },
+          { description: { $regex: q, $options: "i" } }
+        ]
+      }
+      : {};
+
+    const services = await Service.find(filter).sort({ createdAt: -1 }).lean();
     res.json(services);
   } catch (err) {
     console.error("Error retrieving services: ", err.message);
