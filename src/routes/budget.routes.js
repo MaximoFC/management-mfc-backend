@@ -8,7 +8,8 @@ import {
   deleteBudget,
   getAllBudgetsOfClient,
   getActiveWarranties,
-  generatePdf
+  generatePdf,
+  updateBudgetItems
 } from '../controllers/budget.controller.js';
 
 const router = express.Router();
@@ -23,6 +24,7 @@ router.post("/generate-pdf", generatePdf);
 // --- Rutas que requieren :id ---
 router.get('/:id', getBudgetById);
 router.put('/:id', updateBudgetState);
+router.put("/:id/edit", updateBudgetItems);
 router.delete('/:id', deleteBudget);
 
 export default router;

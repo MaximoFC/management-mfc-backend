@@ -371,6 +371,89 @@ export const getActiveWarranties = async (req, res) => {
   }
 };
 
+// Quitar o añadir servicios
+export const updateBudgetItems = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { services = [], bikeparts = [] } = req.body;
+
+    const budget = await Budget.findById(id)
+      .populate("services.service_id")
+      .populate("parts.bikepart_id")
+
+    if (!budget) return res.status(404).json({ message: "Budget not found" });
+
+    if (["pagado", "retirado"].includes(budget.state)) {
+      return res.status(400).json({
+        message: "No se pueden editar presupuestos pagados o retirados"
+      });
+    }
+
+    const dollarRate = budget.dollar_rate_used;
+    let total_usd = 0;
+
+    const [partsDocs, servicesDocs] = await Promise.all([
+      Promise.all(bikeparts.map((p) => BikePart.findById(p.bikepart_id).lean())),
+      Promise.all(services.map((s) => Service.findById(s.service_id).lean()))
+    ]);
+
+    const newParts = bikeparts.map((item, i) => {
+      const part = partsDocs[i];
+      if (!part) throw new Error("Bikepart not found");
+
+      const subtotal = part.price_usd * item.amount;
+      total_usd += subtotal;
+
+      return {
+        bikepart_id: part._id,
+        description: part.description,
+        unit_price_usd: part.price_usd,
+        amount: item.amount,
+        subtotal_usd: subtotal,
+      };
+    });
+
+    const newServices = services.map((item, i) => {
+      const service = servicesDocs[i];
+      if (!service) throw new Error("Service not found");
+
+      // Buscar si este servicio existía antes para traer su garantía
+      const existing = budget.services.find(
+        (s) => String(s.service_id?._id) === String(service._id)
+      );
+
+      const price = service.price_usd;
+
+      total_usd += price;
+
+      return {
+        service_id: service._id,
+        name: service.name,
+        description: service.description,
+        price_usd: price,
+        warranty: existing?.warranty || null, // mantener garantía si existía
+        covered_by_warranty: existing?.covered_by_warranty || null,
+      };
+    });
+
+    // Actualizar budget
+    budget.parts = newParts;
+    budget.services = newServices;
+    budget.total_usd = total_usd;
+    budget.total_ars = total_usd * dollarRate;
+
+    await budget.save();
+
+    res.json({
+      message: "Presupuesto actualizado correctamente",
+      budget,
+    });
+  } catch (err) {
+    console.error("Error updating budget items: ", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // Generar PDF
 export const generatePdf = async (req, res) => {
   try {
