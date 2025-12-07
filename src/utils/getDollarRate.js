@@ -18,7 +18,7 @@ const getDollarBlueRate = async () => {
         return cachedRate;
     } catch (error) {
         console.error('Error getting dollar rate: ', error.message);
-        return cachedRate || 1000;
+        return cachedRate || 1445;
     }
 };
 

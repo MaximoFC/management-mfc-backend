@@ -13,11 +13,14 @@ import serviceRoutes from './routes/service.routes.js';
 import utilsRoutes from './routes/utils.routes.js';
 import helmet from 'helmet';
 import ticketRoutes from './routes/ticket.routes.js';
+import bootstrapRoutes from "./routes/bootstrap.routes.js";
 
 dotenv.config();
 connectDB();
 
 const app = express();
+
+app.disable("etag");
 
 app.set('trust proxy', 1);
 
@@ -26,13 +29,17 @@ app.use(helmet({
 }));
 
 const allowedOrigins = process.env.CORS_ORIGIN.split(',');
+
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('CORS not allowed'));
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
         }
+
+        console.warn("CORS blocked request from origin: ", origin);
+        return callback(new Error("CORS not allowed"));
     },
     credentials: true
 }));
@@ -49,6 +56,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/utils', utilsRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use("/api/bootstrap", bootstrapRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });

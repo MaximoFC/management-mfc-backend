@@ -397,11 +397,51 @@ export const updateBudgetItems = async (req, res) => {
       Promise.all(services.map((s) => Service.findById(s.service_id).lean()))
     ]);
 
+    // Calculo de diferencias de stock
+    const currentPartMap = new Map();
+    for (const p of budget.parts) {
+      const pid = String(p.bikepart_id?.id || p.bikepart_id);
+      currentPartMap.set(pid, (currentPartMap.get(pid) || 0) + (p.amount || 0));
+    }
+    
+    const newPartsMap = new Map();
+    for (const p of bikeparts) {
+      const pid = String(p.bikepart_id);
+      newPartsMap.set(pid, (newPartsMap.get(pid) || 0) + Number(p.amount || 0));
+    }
+
+    const stockAdjustments = [];
+
+    const allPartIds = new Set([...currentPartMap.keys(), ...newPartsMap.keys()]);
+    for (const pid of allPartIds) {
+      const currentAmt = currentPartMap.get(pid) || 0;
+      const newAmt = newPartsMap.get(pid) || 0;
+      const diff = newAmt - currentAmt;
+      if (diff !== 0) stockAdjustments.push({ id: pid, delta: diff });
+    }
+
+    for (const adj of stockAdjustments) {
+      if (adj.delta > 0) {
+        const partDoc = await BikePart.findById(adj.id);
+        if (!partDoc) throw new Error(`Bikepart ${adj.id} not found`);
+        if (partDoc.stock < adj.delta) {
+          throw new Error(`Stock insuficiente para ${partDoc.brand} ${partDoc.description}. Disponible: ${partDoc.stock}. Requerido: ${adj.delta}`);
+        }
+      }
+    }
+
+    for (const adj of stockAdjustments) {
+      const partDoc = await BikePart.findById(adj.id);
+      if (!partDoc) throw new Error(`Bikepart ${adj.id} not found`);
+      partDoc.stock = partDoc.stock - adj.delta;
+      await partDoc.save();
+    }
+
     const newParts = bikeparts.map((item, i) => {
       const part = partsDocs[i];
       if (!part) throw new Error("Bikepart not found");
 
-      const subtotal = part.price_usd * item.amount;
+      const subtotal = (part.price_usd || 0) * Number(item.amount || 0);
       total_usd += subtotal;
 
       return {
@@ -466,3 +506,4 @@ export const generatePdf = async (req, res) => {
     res.status(500).json({ error: "Error generando PDF" });
   }
 };
+
