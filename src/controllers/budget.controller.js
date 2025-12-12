@@ -437,21 +437,28 @@ export const updateBudgetItems = async (req, res) => {
       await partDoc.save();
     }
 
-    const newParts = bikeparts.map((item, i) => {
-      const part = partsDocs[i];
-      if (!part) throw new Error("Bikepart not found");
+    const newParts = await Promise.all(
+      bikeparts.map(async (item, i) => {
+        const part = partsDocs[i];
+        if (!part) throw new Error("Bikepart not found");
+      
+        const subtotal = (part.price_usd || 0) * Number(item.amount || 0);
+        total_usd += subtotal;
 
-      const subtotal = (part.price_usd || 0) * Number(item.amount || 0);
-      total_usd += subtotal;
-
-      return {
-        bikepart_id: part._id,
-        description: part.description,
-        unit_price_usd: part.price_usd,
-        amount: item.amount,
-        subtotal_usd: subtotal,
-      };
-    });
+        const updatedPartDoc = await BikePart.findById(part._id).lean();
+      
+        return {
+          bikepart_id: {
+            _id: part._id,
+            description: part.description,
+            stock: updatedPartDoc.stock
+          },
+          unit_price_usd: part.price_usd,
+          amount: item.amount,
+          subtotal_usd: subtotal
+        };
+      })
+    );
 
     const newServices = services.map((item, i) => {
       const service = servicesDocs[i];
@@ -484,10 +491,16 @@ export const updateBudgetItems = async (req, res) => {
 
     await budget.save();
 
+    await budget.populate([
+      { path: "parts.bikepart_id" },
+      { path: "services.service_id" }
+    ]);
+
     res.json({
       message: "Presupuesto actualizado correctamente",
       budget,
     });
+
   } catch (err) {
     console.error("Error updating budget items: ", err);
     res.status(500).json({ message: err.message });
