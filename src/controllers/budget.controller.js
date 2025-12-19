@@ -397,21 +397,68 @@ export const updateBudgetItems = async (req, res) => {
       Promise.all(services.map((s) => Service.findById(s.service_id).lean()))
     ]);
 
-    const newParts = bikeparts.map((item, i) => {
-      const part = partsDocs[i];
-      if (!part) throw new Error("Bikepart not found");
+    // Calculo de diferencias de stock
+    const currentPartMap = new Map();
+    for (const p of budget.parts) {
+      const pid = String(p.bikepart_id?.id || p.bikepart_id);
+      currentPartMap.set(pid, (currentPartMap.get(pid) || 0) + (p.amount || 0));
+    }
+    
+    const newPartsMap = new Map();
+    for (const p of bikeparts) {
+      const pid = String(p.bikepart_id);
+      newPartsMap.set(pid, (newPartsMap.get(pid) || 0) + Number(p.amount || 0));
+    }
 
-      const subtotal = part.price_usd * item.amount;
-      total_usd += subtotal;
+    const stockAdjustments = [];
 
-      return {
-        bikepart_id: part._id,
-        description: part.description,
-        unit_price_usd: part.price_usd,
-        amount: item.amount,
-        subtotal_usd: subtotal,
-      };
-    });
+    const allPartIds = new Set([...currentPartMap.keys(), ...newPartsMap.keys()]);
+    for (const pid of allPartIds) {
+      const currentAmt = currentPartMap.get(pid) || 0;
+      const newAmt = newPartsMap.get(pid) || 0;
+      const diff = newAmt - currentAmt;
+      if (diff !== 0) stockAdjustments.push({ id: pid, delta: diff });
+    }
+
+    for (const adj of stockAdjustments) {
+      if (adj.delta > 0) {
+        const partDoc = await BikePart.findById(adj.id);
+        if (!partDoc) throw new Error(`Bikepart ${adj.id} not found`);
+        if (partDoc.stock < adj.delta) {
+          throw new Error(`Stock insuficiente para ${partDoc.brand} ${partDoc.description}. Disponible: ${partDoc.stock}. Requerido: ${adj.delta}`);
+        }
+      }
+    }
+
+    for (const adj of stockAdjustments) {
+      const partDoc = await BikePart.findById(adj.id);
+      if (!partDoc) throw new Error(`Bikepart ${adj.id} not found`);
+      partDoc.stock = partDoc.stock - adj.delta;
+      await partDoc.save();
+    }
+
+    const newParts = await Promise.all(
+      bikeparts.map(async (item, i) => {
+        const part = partsDocs[i];
+        if (!part) throw new Error("Bikepart not found");
+      
+        const subtotal = (part.price_usd || 0) * Number(item.amount || 0);
+        total_usd += subtotal;
+
+        const updatedPartDoc = await BikePart.findById(part._id).lean();
+      
+        return {
+          bikepart_id: {
+            _id: part._id,
+            description: part.description,
+            stock: updatedPartDoc.stock
+          },
+          unit_price_usd: part.price_usd,
+          amount: item.amount,
+          subtotal_usd: subtotal
+        };
+      })
+    );
 
     const newServices = services.map((item, i) => {
       const service = servicesDocs[i];
@@ -444,10 +491,16 @@ export const updateBudgetItems = async (req, res) => {
 
     await budget.save();
 
+    await budget.populate([
+      { path: "parts.bikepart_id" },
+      { path: "services.service_id" }
+    ]);
+
     res.json({
       message: "Presupuesto actualizado correctamente",
       budget,
     });
+
   } catch (err) {
     console.error("Error updating budget items: ", err);
     res.status(500).json({ message: err.message });
@@ -466,3 +519,4 @@ export const generatePdf = async (req, res) => {
     res.status(500).json({ error: "Error generando PDF" });
   }
 };
+
