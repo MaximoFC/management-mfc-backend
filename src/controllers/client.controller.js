@@ -63,9 +63,15 @@ export const updateClient = async (req, res) => {
         );
 
         if (!client) return res.status(404).json({ error: "Client not found" });
-        res.json(client);
+
+        const bikes = await Bike.find({ current_owner_id: client._id });
+
+        res.json({
+            ...client.toObject(),
+            bikes
+        });
     } catch (error) {
-        if (error.code === 11000) { // llave duplicada (mobileNum con unique)
+        if (error.code === 11000) {
             return res.status(409).json({ error: "Mobile number already exists" });
         }
         res.status(500).json({ error: 'Error updating client' });
