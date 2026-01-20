@@ -248,6 +248,12 @@ export const updateBudgetState = async (req, res) => {
       }
     };
 
+    if (current === next) {
+      return res.status(400).json({
+        message: `El presupuesto ya se encuentra en estado "${next}"`
+      });
+    }
+
     // Transiciones válidas
     if (current === 'iniciado' && ['en proceso', 'terminado', 'pagado', 'retirado'].includes(next)) {
       await discountStock();
