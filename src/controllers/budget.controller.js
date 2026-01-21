@@ -1,5 +1,4 @@
 import Budget from '../models/budget.model.js';
-import Cashflow from "../models/cashFlow.model.js";
 import BikePart from '../models/bikepart.model.js';
 import Service from '../models/service.model.js';
 import Bike from '../models/bike.model.js';
@@ -23,6 +22,7 @@ export const createBudget = async (req, res) => {
     const dollarRate = await getDollarBlueRate();
 
     let total_usd = 0;
+    let total_ars = 0;
 
     const pastBudgets = await Budget.find({ bike_id, client_at_creation: bike.current_owner_id })
       .populate('services.service_id', '_id name')
@@ -53,15 +53,30 @@ export const createBudget = async (req, res) => {
       const part = partsDocs[i];
       if (!part) throw new Error('BikePart not found');
 
-      const subtotal = part.price_usd * item.amount;
-      total_usd += subtotal;
+      let unit_price;
+      let item_currency;
+
+      if (part.pricing_currency === 'ARS') {
+        unit_price = part.sale_price_ars;
+        item_currency = 'ARS';
+      } else {
+        unit_price = part.price_usd;
+        item_currency = 'USD'
+      }
+
+      const subtotal = unit_price * item.amount;
+
+      if (item_currency === 'ARS') {
+        total_ars += subtotal;
+      } else total_usd += subtotal;
 
       return {
         bikepart_id: part._id,
         description: part.description,
-        unit_price_usd: part.price_usd,
+        unit_price,
+        currency: item_currency,
         amount: item.amount,
-        subtotal_usd: subtotal
+        subtotal
       };
     });
 
@@ -92,13 +107,18 @@ export const createBudget = async (req, res) => {
       };
     });
 
-    const total_ars = total_usd * dollarRate;
+    let budgetCurrency = 'ARS';
+
+    if (total_usd > 0 && total_ars === 0) {
+      budgetCurrency = 'USD';
+      total_ars = total_usd * dollarRate;
+    }
 
     const budget = new Budget({
       bike_id,
       client_at_creation: bike.current_owner_id,
       employee_id,
-      currency: 'USD',
+      currency: budgetCurrency,
       dollar_rate_used: dollarRate,
       parts: partItems,
       services: serviceItems,
@@ -211,7 +231,10 @@ export const updateBudgetState = async (req, res) => {
     };
 
     const registerPayment = async (budget, employee_id = null) => {
-      const amount = budget.total_ars || (budget.total_usd * budget.dollar_rate_used);
+      const amount =
+        budget.currency === 'ARS'
+        ? budget.total_amount
+        : budget.total_ars;
       const bike = await Bike.findById(budget.bike_id).populate('current_owner_id');
       const client = bike?.current_owner_id;
       const clientName = client ? `${client.name} ${client.surname}`.trim() : 'Cliente desconocido';
@@ -380,6 +403,9 @@ export const getActiveWarranties = async (req, res) => {
 // Quitar o añadir servicios
 export const updateBudgetItems = async (req, res) => {
   try {
+    let total_usd = 0;
+    let total_ars = 0;
+
     const { id } = req.params;
     const { services = [], bikeparts = [] } = req.body;
 
@@ -394,9 +420,6 @@ export const updateBudgetItems = async (req, res) => {
         message: "No se pueden editar presupuestos pagados o retirados"
       });
     }
-
-    const dollarRate = budget.dollar_rate_used;
-    let total_usd = 0;
 
     const [partsDocs, servicesDocs] = await Promise.all([
       Promise.all(bikeparts.map((p) => BikePart.findById(p.bikepart_id).lean())),
@@ -443,40 +466,57 @@ export const updateBudgetItems = async (req, res) => {
       await partDoc.save();
     }
 
-    const newParts = await Promise.all(
-      bikeparts.map(async (item, i) => {
-        const part = partsDocs[i];
+    const newParts = bikeparts.map((item) => {
+      const existing = budget.parts.find(
+        (p) => String(p.bikepart_id) === String(item.bikepart_id)
+      );
+      
+      let unit_price;
+      let currency;
+
+      if (existing) {
+        unit_price = existing.unit_price;
+        currency = existing.currency;
+      } else {
+        const part = partsDocs.find(p => String(p._id) === String(item.bikepart_id));
         if (!part) throw new Error("Bikepart not found");
-      
-        const subtotal = (part.price_usd || 0) * Number(item.amount || 0);
-        total_usd += subtotal;
 
-        const updatedPartDoc = await BikePart.findById(part._id).lean();
-      
-        return {
-          bikepart_id: {
-            _id: part._id,
-            description: part.description,
-            stock: updatedPartDoc.stock
-          },
-          unit_price_usd: part.price_usd,
-          amount: item.amount,
-          subtotal_usd: subtotal
-        };
-      })
-    );
+        if (part.pricing_currency === 'ARS') {
+          unit_price = part.sale_price_ars;
+          currency = 'ARS';
+        } else {
+          unit_price = part.price_usd;
+          currency = 'USD';
+        }
+      }
 
-    const newServices = services.map((item, i) => {
-      const service = servicesDocs[i];
+      const subtotal = unit_price * Number(item.amount || 0);
+
+      if (currency === 'ARS') total_ars += subtotal;
+      else total_usd += subtotal;
+      
+      return {
+        bikepart_id: item.bikepart_id,
+        description: existing?.description || partsDocs.find(p => String(p._id) === String(item.bikepart_id))?.description,
+        unit_price,
+        currency,
+        amount: item.amount,
+        subtotal
+      };
+    });
+
+    const newServices = services.map((item) => {
+      const service = servicesDocs.find(
+        s => String(s._id) === String(item.service_id)
+      );
       if (!service) throw new Error("Service not found");
 
       // Buscar si este servicio existía antes para traer su garantía
-      const existing = budget.services.find(
-        (s) => String(s.service_id?._id) === String(service._id)
+      const existing = budget.parts.find(
+        (p) => String(p.bikepart_id?._id || p.bikepart_id) === String(item.bikepart_id)
       );
 
       const price = service.price_usd;
-
       total_usd += price;
 
       return {
@@ -493,7 +533,9 @@ export const updateBudgetItems = async (req, res) => {
     budget.parts = newParts;
     budget.services = newServices;
     budget.total_usd = total_usd;
-    budget.total_ars = total_usd * dollarRate;
+    budget.total_ars = budget.currency === 'USD'
+      ? total_usd * budget.dollar_rate_used
+      : total_ars;
 
     await budget.save();
 

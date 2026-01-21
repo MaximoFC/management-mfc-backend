@@ -26,14 +26,44 @@ const BikePartSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+
+  // Legacy
   price_usd: {
     type: Number,
-    required: true,
-    min: 0,
-    validate: {
-      validator: v => /^\d+(\.\d{1,2})?$/.test(v.toString()), // hasta 2 decimales
-      message: props => `${props.value} no es un precio válido (máx. 2 decimales)`
-    }
+    min: 0
+  },
+
+  // Modelo nuevo
+  cost_ars: {
+    type: Number,
+    min: 0
+  },
+  markup_percent: {
+    type: Number,
+    default: 45,
+    min: 0
+  },
+  sale_price_ars: {
+    type: Number,
+    min: 0
+  },
+  pricing_currency: {
+    type: String,
+    enum: ['USD', 'ARS'],
+    default: 'USD'
+  },
+    is_legacy_pricing: {
+    type: Boolean,
+    default: true
   }
+
 }, { timestamps: true });
+
+BikePartSchema.pre('save', function (next) {
+  if (this.pricing_currency === 'ARS' && this.sale_price_ars == null) {
+    return next(new Error("Repuesto en ARS sin precio de venta"));
+  }
+  next();
+});
+
 export default mongoose.model('BikePart', BikePartSchema);

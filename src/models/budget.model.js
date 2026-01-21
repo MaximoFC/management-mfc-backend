@@ -41,13 +41,13 @@ const budgetSchema = new mongoose.Schema({
   payment_date: Date,
   currency: { 
     type: String,
-    enum: ['USD'],
+    enum: ['USD', 'ARS'],
     default: 'USD'
   },
   dollar_rate_used: {
-    type: Number,
-    required: true
+    type: Number
   },
+  total_amount: Number,
   total_usd: Number,
   total_ars: Number,
   days_of_stay: Number,
@@ -55,9 +55,13 @@ const budgetSchema = new mongoose.Schema({
     {
       bikepart_id: { type: mongoose.Schema.Types.ObjectId, ref: 'BikePart' },
       description: String,           
-      unit_price_usd: Number,             
+      unit_price: Number,
+      currency: {
+        type: String,
+        enum: ['USD', 'ARS']
+      },             
       amount: Number,
-      subtotal_usd: Number
+      subtotal: Number
     }
   ],
   services: [
@@ -76,5 +80,12 @@ const budgetSchema = new mongoose.Schema({
     required: true
   }
 }, { timestamps: true });
+
+budgetSchema.pre('save', function (next) {
+  if (this.currency === 'USD' && !this.dollar_rate_used) {
+    return next(new Error("Presupuesto en USD sin cotización de dólar"));
+  }
+  next();
+});
 
 export default mongoose.model('Budget', budgetSchema);
