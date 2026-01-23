@@ -82,9 +82,21 @@ const budgetSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 budgetSchema.pre('save', function (next) {
-  if (this.currency === 'USD' && !this.dollar_rate_used) {
+  if (this.currency === 'USD') {
+    return next();
+  }
+
+  if (
+    !this.isModified('currency') &&
+    !this.isModified('dollar_rate_used')
+  ) {
+    return next();
+  }
+
+  if (!this.dollar_rate_used) {
     return next(new Error("Presupuesto en USD sin cotización de dólar"));
   }
+  
   next();
 });
 
