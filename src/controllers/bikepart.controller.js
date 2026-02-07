@@ -1,6 +1,13 @@
 import BikePart from "../models/bikepart.model.js";
 import Notification from '../models/notification.model.js';
 import XLSX from "xlsx";
+import { createFlow } from "./cash.controller.js";
+
+// helper numérico
+const toNumberSafe = (value) => {
+  const n = Number(value);
+  return isNaN(n) ? 0 : n;
+};
 
 // Helpers
 
@@ -106,6 +113,21 @@ export const createBikeParts = async (req, res) => {
       throw new Error("Debe especificar precio en ARS o USD");
     }
 
+    if (part.pricing_currency === "ARS") {
+      const cost = toNumberSafe(part.cost_ars);
+      const stock = toNumberSafe(part.stock);
+      const amount = cost * stock;
+
+      if (amount > 0) {
+        await createFlow({
+          type: "egreso",
+          amount,
+          description: `Compra inicial de repuesto ${part.description}`,
+          employee_id: req.user?._id || null
+        });
+      }
+    }
+
     await part.save();
 
     if (part.stock <= 5) {
@@ -184,17 +206,38 @@ export const updateBikePartPartial = async (req, res) => {
 
 export const updateBikePartStock = async (req, res) => {
   try {
-    const { delta } = req.body;
+    let { delta, cost_ars } = req.body;
 
-    if (typeof delta !== "number") {
-      return res.status(400).json({ error: "Delta inválido" });
+    delta = Number(delta);
+    cost_ars = Number(cost_ars);
+
+    if (!delta || delta <= 0) {
+      return res.status(400).json({ error: "Cantidad inválida" });
+    }
+
+    if (!cost_ars || cost_ars <= 0) {
+      return res.status(400).json({ error: "Costo inválido" });
     }
 
     const part = await BikePart.findById(req.params.id);
     if (!part) return res.status(404).json({ error: "No encontrado" });
 
     part.stock += delta;
+    part.cost_ars = cost_ars;
+
     await part.save();
+
+    if (part.pricing_currency === "ARS" && part.cost_ars) {
+      const amount = part.cost_ars * delta;
+
+      await createFlow({
+        type: "egreso",
+        amount,
+        description: `Reposición de stock ${part.description}`,
+        employee_id: req.user?._id || null
+      })
+    }
+
     await createLowStockNotification(part);
 
     res.json(part);

@@ -71,7 +71,7 @@ export const createFlow = async ({ type, amount, description, employee_id }) => 
 
         const numericAmount = Number(amount);
         if (!numericAmount || numericAmount <= 0 || isNaN(numericAmount)) {
-            throw new Error("El monto debe ser mayor a 0");
+            throw new Error(`Monto inválido recibido: ${amount}`);
         }
 
         const cash = await Cash.findOne() || await Cash.create({ balance: 0 });
