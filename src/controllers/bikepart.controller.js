@@ -273,11 +273,25 @@ export const updateBikePartsPricesFromExcel = async (req, res) => {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: "A" });
 
+    if (!rows.length) {
+      return res.status(400).json({ message: "El Excel está vacío" });
+    }
+
+    const markup = 45;
+
     const result = {
       updated: 0,
       skipped: 0,
-      notFounr: []
+      notFound: []
     };
+
+    const codes = rows
+      .map(r => String(r.A || "").trim())
+      .filter(Boolean);
+
+    const parts = await BikePart.find({ code: { $in: codes } });
+    const partsMap = new Map(parts.map(p => [p.code, p]));
+    const bulkOps = [];
 
     for (const row of rows) {
       const code = String(row.A || "").trim();
@@ -288,23 +302,35 @@ export const updateBikePartsPricesFromExcel = async (req, res) => {
         continue;
       }
 
-      const part = await BikePart.findOne({ code });
+      const part = partsMap.get(code);
 
       if (!part) {
         result.notFound.push(code);
         continue;
       }
 
-      const markup = 45;
       const salePrice = Math.round(priceList * (1 + markup / 100));
 
-      part.pricing_currency = "ARS";
-      part.sale_price_ars = salePrice;
-      part.markup_percent = markup;
-      part.is_legacy_pricing = false;
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: part._id },
+          update: {
+            $set: {
+              pricing_currency: "ARS",
+              sale_price_ars: salePrice,
+              markup_percent: markup,
+              is_legacy_pricing: false
+            }
+          }
+        }
+      });
 
-      await part.save();
       result.updated++;
+    }
+
+
+    if (bulkOps.length) {
+      await BikePart.bulkWrite(bulkOps);
     }
 
     res.json({
