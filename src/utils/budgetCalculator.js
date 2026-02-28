@@ -93,12 +93,14 @@ export function calculateBudget({
             covered_by_warranty
         };
     });
-    // MONEDA FINAL
-    let currency = "ARS";
-    if (total_usd > 0 && total_ars === 0) {
-        currency = "USD";
-        total_ars = total_usd * dollarRate;
-    }
+    
+    // TOTAL FINAL EN ARS
+    const convertedUSD = total_usd * dollarRate;
+    total_ars = total_ars + convertedUSD;
+
+    // Moneda base solo informativa
+    let currency = total_usd > 0 ? "USD" : "ARS";
+
     return {
         parts,
         services,

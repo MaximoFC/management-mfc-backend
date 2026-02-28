@@ -429,10 +429,7 @@ export const updateBudgetItems = async (req, res) => {
     budget.parts = parts;
     budget.services = serviceItems;
     budget.total_usd = total_usd;
-    budget.total_ars =
-      budget.currency === 'USD'
-        ? total_usd * budget.dollar_rate_used
-        : total_ars;
+    budget.total_ars = total_ars;
 
     await budget.save();
 
