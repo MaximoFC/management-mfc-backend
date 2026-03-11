@@ -1,4 +1,5 @@
 import express from 'express';
+import upload from '../middlewares/upload.middleware.js';
 
 import BikePart from '../models/bikepart.model.js';
 import {
@@ -6,7 +7,10 @@ import {
   deleteBikePart,
   getBikePartById,
   getBikeParts,
-  updateBikePart
+  updateBikePart,
+  updateBikePartPartial,
+  updateBikePartStock,
+  updateBikePartsPricesFromExcel
 } from "../controllers/bikepart.controller.js"
 
 const router = express.Router();
@@ -33,7 +37,13 @@ router.get('/search', async (req, res) => {
 });
 router.get('/:id', getBikePartById);
 router.post('/', createBikeParts);
+router.post('/prices/import-excel',
+  upload.single("file"),
+  updateBikePartsPricesFromExcel
+);
 router.put('/:id', updateBikePart);
+router.patch('/:id', updateBikePartPartial);
+router.patch('/:id/stock', updateBikePartStock);
 router.delete('/:id', deleteBikePart);
 
 export default router

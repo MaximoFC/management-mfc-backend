@@ -1,5 +1,27 @@
 import BikePart from "../models/bikepart.model.js";
 import Notification from '../models/notification.model.js';
+import XLSX from "xlsx";
+import { createFlow } from "./cash.controller.js";
+
+// helper numérico
+const toNumberSafe = (value) => {
+  const n = Number(value);
+  return isNaN(n) ? 0 : n;
+};
+
+// Helpers
+
+const applyArsPricing = (part, data) => {
+  part.cost_ars = data.cost_ars;
+  part.markup_percent = data.markup_percent ?? part.markup_percent ?? 45;
+
+  part.sale_price_ars = Math.round(
+    part.cost_ars * (1 + part.markup_percent / 100)
+  );
+
+  part.pricing_currency = 'ARS';
+  part.is_legacy_pricing = false;
+};
 
 const createLowStockNotification = async (part) => {
   try {
@@ -22,13 +44,14 @@ const createLowStockNotification = async (part) => {
   }
 };
 
+// Get 
+
 export const getBikeParts = async (req, res) => {
   try {
     const { search, type } = req.query;
-
     const filter = {};
 
-    if (search && search.trim() !== "") {
+    if (search?.trim()) {
       const regex = new RegExp(search.trim(), "i");
       filter.$or = [
         { brand: regex },
@@ -37,21 +60,74 @@ export const getBikeParts = async (req, res) => {
       ];
     }
 
-    if (type && type.trim() !== "") {
+    if (type?.trim()) {
       filter.type = type.trim();
     }
 
     const bikeparts = await BikePart.find(filter).sort({ brand: 1 });
 
-    res.json(bikeparts);
+    res.json(
+      bikeparts.map(p => ({
+        ...p.toObject(),
+        price: p.pricing_currency === 'ARS'
+          ? p.sale_price_ars
+          : p.price_usd,
+        currency: p.pricing_currency
+      }))
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
+export const getBikePartById = async (req, res) => {
+  try {
+    const part = await BikePart.findById(req.params.id);
+    if (!part) return res.status(404).json({ error: 'No encontrado' });
+    res.json(part);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Create
+
 export const createBikeParts = async (req, res) => {
   try {
-    const part = new BikePart(req.body);
+    const data = req.body;
+    const part = new BikePart();
+
+    part.code = data.code;
+    part.brand = data.brand;
+    part.type = data.type;
+    part.description = data.description;
+    part.stock = data.stock ?? 0;
+
+    if (data.cost_ars !== undefined) {
+      applyArsPricing(part, data);
+    } else if (data.price_usd !== undefined) {
+      part.price_usd = data.price_usd;
+      part.pricing_currency = 'USD';
+      part.is_legacy_pricing = true;
+    } else {
+      throw new Error("Debe especificar precio en ARS o USD");
+    }
+
+    if (part.pricing_currency === "ARS") {
+      const cost = toNumberSafe(part.cost_ars);
+      const stock = toNumberSafe(part.stock);
+      const amount = cost * stock;
+
+      if (amount > 0) {
+        await createFlow({
+          type: "egreso",
+          amount,
+          description: `Compra inicial de repuesto ${part.description}`,
+          employee_id: req.user?._id || null
+        });
+      }
+    }
+
     await part.save();
 
     if (part.stock <= 5) {
@@ -63,22 +139,38 @@ export const createBikeParts = async (req, res) => {
     console.error("Error creando repuesto:", err.message);
     res.status(400).json({ error: err.message });
   }
-}
+};
 
-export const getBikePartById = async (req, res) => {
-  try {
-    const part = await BikePart.findById(req.params.id);
-    if (!part) return res.status(404).json({ error: 'No encontrado' });
-    res.json(part);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-}
+// Update
 
 export const updateBikePart = async (req, res) => {
   try {
-    const part = await BikePart.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const part = await BikePart.findById(req.params.id);
     if (!part) return res.status(404).json({ error: 'No encontrado' });
+
+    const data = req.body;
+
+    part.code = data.code ?? part.code;
+    part.brand = data.brand ?? part.brand;
+    part.type = data.type ?? part.type;
+    part.description = data.description ?? part.description;
+    part.stock = data.stock ?? part.stock;
+
+    // ARS tiene prioridad
+    if (data.cost_ars !== undefined) {
+      applyArsPricing(part, data);
+    }
+
+    // USD solo si sigue siendo legacy
+    if (
+      data.price_usd !== undefined &&
+      part.pricing_currency === 'USD' &&
+      data.cost_ars === undefined
+    ) {
+      part.price_usd = data.price_usd;
+    }
+
+    await part.save();
 
     if (part.stock <= 5) {
       await createLowStockNotification(part);
@@ -88,7 +180,73 @@ export const updateBikePart = async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-}
+};
+
+export const updateBikePartPartial = async (req, res) => {
+  try {
+    const part = await BikePart.findById(req.params.id);
+    if (!part) return res.status(404).json({ error: "No encontrado" });
+
+    const data = req.body;
+
+    if (data.brand !== undefined) part.brand = data.brand;
+    if (data.type !== undefined) part.type = data.type;
+    if (data.description !== undefined) part.description = data.description;
+
+    if (data.cost_ars !== undefined) {
+      applyArsPricing(part, data);
+    }
+
+    await part.save();
+    res.json(part);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+export const updateBikePartStock = async (req, res) => {
+  try {
+    let { delta, cost_ars } = req.body;
+
+    delta = Number(delta);
+    cost_ars = Number(cost_ars);
+
+    if (!delta || delta <= 0) {
+      return res.status(400).json({ error: "Cantidad inválida" });
+    }
+
+    if (!cost_ars || cost_ars <= 0) {
+      return res.status(400).json({ error: "Costo inválido" });
+    }
+
+    const part = await BikePart.findById(req.params.id);
+    if (!part) return res.status(404).json({ error: "No encontrado" });
+
+    part.stock += delta;
+    part.cost_ars = cost_ars;
+
+    await part.save();
+
+    if (part.pricing_currency === "ARS" && part.cost_ars) {
+      const amount = part.cost_ars * delta;
+
+      await createFlow({
+        type: "egreso",
+        amount,
+        description: `Reposición de stock ${part.description}`,
+        employee_id: req.user?._id || null
+      })
+    }
+
+    await createLowStockNotification(part);
+
+    res.json(part);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+// Delete
 
 export const deleteBikePart = async (req, res) => {
   try {
@@ -101,4 +259,86 @@ export const deleteBikePart = async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-}
+};
+
+// Import
+
+export const updateBikePartsPricesFromExcel = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No se subió ningún archivo" });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: "A" });
+
+    if (!rows.length) {
+      return res.status(400).json({ message: "El Excel está vacío" });
+    }
+
+    const markup = 45;
+
+    const result = {
+      updated: 0,
+      skipped: 0,
+      notFound: []
+    };
+
+    const codes = rows
+      .map(r => String(r.A || "").trim())
+      .filter(Boolean);
+
+    const parts = await BikePart.find({ code: { $in: codes } });
+    const partsMap = new Map(parts.map(p => [p.code, p]));
+    const bulkOps = [];
+
+    for (const row of rows) {
+      const code = String(row.A || "").trim();
+      const priceList = Number(row.E);
+
+      if (!code || !priceList || priceList <= 0) {
+        result.skipped++;
+        continue;
+      }
+
+      const part = partsMap.get(code);
+
+      if (!part) {
+        result.notFound.push(code);
+        continue;
+      }
+
+      const salePrice = Math.round(priceList * (1 + markup / 100));
+
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: part._id },
+          update: {
+            $set: {
+              pricing_currency: "ARS",
+              sale_price_ars: salePrice,
+              markup_percent: markup,
+              is_legacy_pricing: false
+            }
+          }
+        }
+      });
+
+      result.updated++;
+    }
+
+
+    if (bulkOps.length) {
+      await BikePart.bulkWrite(bulkOps);
+    }
+
+    res.json({
+      message: "Actualización de precios finales",
+      result
+    });
+  } catch (err) {
+    console.error("Excel price update error: ", err);
+    res.status(500).json({ message: err.message });
+  }
+};

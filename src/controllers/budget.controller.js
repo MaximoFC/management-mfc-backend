@@ -1,5 +1,4 @@
 import Budget from '../models/budget.model.js';
-import Cashflow from "../models/cashFlow.model.js";
 import BikePart from '../models/bikepart.model.js';
 import Service from '../models/service.model.js';
 import Bike from '../models/bike.model.js';
@@ -7,6 +6,7 @@ import getDollarBlueRate from '../utils/getDollarRate.js';
 import mongoose from 'mongoose';
 import { generateBudgetPdf } from '../services/pdf/budgetPdf.service.js';
 import { createFlow } from './cash.controller.js';
+import { calculateBudget } from "../utils/budgetCalculator.js";
 
 // Crear presupuesto
 export const createBudget = async (req, res) => {
@@ -21,8 +21,6 @@ export const createBudget = async (req, res) => {
     if (!bike) return res.status(404).json({ message: 'Bike not found' });
 
     const dollarRate = await getDollarBlueRate();
-
-    let total_usd = 0;
 
     const pastBudgets = await Budget.find({ bike_id, client_at_creation: bike.current_owner_id })
       .populate('services.service_id', '_id name')
@@ -48,59 +46,30 @@ export const createBudget = async (req, res) => {
       Promise.all(services.map(s => Service.findById(s.service_id).lean()))
     ]);
 
-    // Procesar piezas
-    const partItems = bikeparts.map((item, i) => {
-      const part = partsDocs[i];
-      if (!part) throw new Error('BikePart not found');
-
-      const subtotal = part.price_usd * item.amount;
-      total_usd += subtotal;
-
-      return {
-        bikepart_id: part._id,
-        description: part.description,
-        unit_price_usd: part.price_usd,
-        amount: item.amount,
-        subtotal_usd: subtotal
-      };
+    const {
+      parts,
+      services: serviceItems,
+      total_usd,
+      total_ars,
+      currency
+    } = calculateBudget({
+      bikepartsInput: bikeparts,
+      servicesInput: services,
+      partsDocs,
+      servicesDocs,
+      existingBudget: null,
+      activeWarranties,
+      applyWarranty,
+      dollarRate
     });
-
-    // Procesar servicios
-    const serviceItems = services.map((item, i) => {
-      const service = servicesDocs[i];
-      if (!service) throw new Error('Service not found');
-
-      let price = service.price_usd;
-      let coveredBy = null;
-
-      const match = activeWarranties.find(w => w.serviceId === String(service._id));
-      const userWantsWarranty = applyWarranty.includes(String(service._id));
-
-      if (match && userWantsWarranty) {
-        price = 0;
-        coveredBy = match.budgetId;
-      }
-
-      total_usd += price;
-
-      return {
-        service_id: service._id,
-        name: service.name,
-        description: service.description,
-        price_usd: price,
-        covered_by_warranty: coveredBy
-      };
-    });
-
-    const total_ars = total_usd * dollarRate;
 
     const budget = new Budget({
       bike_id,
       client_at_creation: bike.current_owner_id,
       employee_id,
-      currency: 'USD',
+      currency,
       dollar_rate_used: dollarRate,
-      parts: partItems,
+      parts,
       services: serviceItems,
       total_usd,
       total_ars,
@@ -211,7 +180,10 @@ export const updateBudgetState = async (req, res) => {
     };
 
     const registerPayment = async (budget, employee_id = null) => {
-      const amount = budget.total_ars || (budget.total_usd * budget.dollar_rate_used);
+      const amount =
+        budget.currency === 'ARS'
+        ? budget.total_amount
+        : budget.total_ars;
       const bike = await Bike.findById(budget.bike_id).populate('current_owner_id');
       const client = bike?.current_owner_id;
       const clientName = client ? `${client.name} ${client.surname}`.trim() : 'Cliente desconocido';
@@ -395,9 +367,6 @@ export const updateBudgetItems = async (req, res) => {
       });
     }
 
-    const dollarRate = budget.dollar_rate_used;
-    let total_usd = 0;
-
     const [partsDocs, servicesDocs] = await Promise.all([
       Promise.all(bikeparts.map((p) => BikePart.findById(p.bikepart_id).lean())),
       Promise.all(services.map((s) => Service.findById(s.service_id).lean()))
@@ -443,57 +412,24 @@ export const updateBudgetItems = async (req, res) => {
       await partDoc.save();
     }
 
-    const newParts = await Promise.all(
-      bikeparts.map(async (item, i) => {
-        const part = partsDocs[i];
-        if (!part) throw new Error("Bikepart not found");
-      
-        const subtotal = (part.price_usd || 0) * Number(item.amount || 0);
-        total_usd += subtotal;
-
-        const updatedPartDoc = await BikePart.findById(part._id).lean();
-      
-        return {
-          bikepart_id: {
-            _id: part._id,
-            description: part.description,
-            stock: updatedPartDoc.stock
-          },
-          unit_price_usd: part.price_usd,
-          amount: item.amount,
-          subtotal_usd: subtotal
-        };
-      })
-    );
-
-    const newServices = services.map((item, i) => {
-      const service = servicesDocs[i];
-      if (!service) throw new Error("Service not found");
-
-      // Buscar si este servicio existía antes para traer su garantía
-      const existing = budget.services.find(
-        (s) => String(s.service_id?._id) === String(service._id)
-      );
-
-      const price = service.price_usd;
-
-      total_usd += price;
-
-      return {
-        service_id: service._id,
-        name: service.name,
-        description: service.description,
-        price_usd: price,
-        warranty: existing?.warranty || null, // mantener garantía si existía
-        covered_by_warranty: existing?.covered_by_warranty || null,
-      };
+    const {
+      parts,
+      services: serviceItems,
+      total_usd,
+      total_ars
+    } = calculateBudget({
+      bikepartsInput: bikeparts,
+      servicesInput: services,
+      partsDocs,
+      servicesDocs,
+      existingBudget: budget,
+      dollarRate: budget.dollar_rate_used
     });
 
-    // Actualizar budget
-    budget.parts = newParts;
-    budget.services = newServices;
+    budget.parts = parts;
+    budget.services = serviceItems;
     budget.total_usd = total_usd;
-    budget.total_ars = total_usd * dollarRate;
+    budget.total_ars = total_ars;
 
     await budget.save();
 
