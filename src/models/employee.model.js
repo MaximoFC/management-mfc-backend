@@ -5,6 +5,11 @@ const employeeSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    email: {
+        type: String,
+        required: true,
+        unique: true
+    },
     password: {
         type: String,
         required: true
@@ -13,7 +18,11 @@ const employeeSchema = new mongoose.Schema({
         type: String,
         enum: ['admin', 'employee'],
         default: 'employee'
-    }
+    },
+
+    // Reset de password
+    resetToken: String,
+    resetTokenExpires: Date
 }, {
     timestamps: true
 });
