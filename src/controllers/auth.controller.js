@@ -3,10 +3,10 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 export const login = async (req, res) => {
-    const { name, password } = req.body;
+    const { email, password } = req.body;
 
     try {
-        const employee = await Employee.findOne({ name });
+        const employee = await Employee.findOne({ email });
         if (!employee) return res.status(400).json({ error:'Invalid credentials' });
 
         const passwordOk = await bcrypt.compare(password, employee.password);
