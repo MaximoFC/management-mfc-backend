@@ -14,6 +14,7 @@ import utilsRoutes from './routes/utils.routes.js';
 import helmet from 'helmet';
 import ticketRoutes from './routes/ticket.routes.js';
 import bootstrapRoutes from "./routes/bootstrap.routes.js";
+import invitationRoutes from './routes/invitation.routes.js';
 
 dotenv.config();
 connectDB();
@@ -46,7 +47,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-app.use('/api', authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/bikes', bikeRoutes);
 app.use('/api/bikeparts', bikePartsRoutes);
@@ -57,6 +58,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/utils', utilsRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use("/api/bootstrap", bootstrapRoutes);
+app.use('/api/invitations', invitationRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });

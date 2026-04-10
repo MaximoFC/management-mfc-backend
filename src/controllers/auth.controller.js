@@ -25,6 +25,7 @@ export const login = async (req, res) => {
             employee: {
                 id: employee._id,
                 name: employee.name,
+                email: employee.email,
                 role: employee.role
             }
         });
@@ -78,6 +79,12 @@ export const registerWithToken = async (req, res) => {
             password: hashedPassword,
             role: count === 0 ? "admin" : "employee"
         });
+
+        const existingUser = await Employee.findOne({ email: invitation.email });
+
+        if (existingUser) {
+            return res.status(400).json({ error: "User already exists" });
+        }
 
         invitation.used = true;
         await invitation.save();
