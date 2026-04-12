@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.routes.js'
 import clientRoutes from './routes/client.routes.js';
@@ -16,7 +15,6 @@ import ticketRoutes from './routes/ticket.routes.js';
 import bootstrapRoutes from "./routes/bootstrap.routes.js";
 import invitationRoutes from './routes/invitation.routes.js';
 
-dotenv.config();
 connectDB();
 
 const app = express();

@@ -1,13 +1,25 @@
 import crypto from 'crypto';
 import Invitation from '../models/invitation.model.js';
+import Employee from '../models/employee.model.js';
+import { sendEmail } from "../services/email.service.js";
 
 export const createInvitation = async (req, res) => {
     try {
         const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ error: "Email is required" });
+        }
 
         const count = await Employee.countDocuments();
         if (count >= 2) {
             return res.status(403).json({ error: "User limit reached" });
+        }
+
+        const existingUser = await Employee.findOne({ email });
+
+        if (existingUser) {
+            return res.status(400).json({ error: "User already exists" });
         }
 
         const existingInvite = await Invitation.findOne({ email, used: false });
@@ -20,14 +32,26 @@ export const createInvitation = async (req, res) => {
         const invitation = await Invitation.create({
             email,
             token,
-            expiresAt: Date.now() + 1000 * 60 * 60 * 24
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24)
         });
 
-        const link = `http://localhost:5173/register?token=${token}`;
+        const link = `${process.env.FRONTEND_URL}/register?token=${token}`;
 
-        res.json({ link });
+        await sendEmail({
+            to: email,
+            subject: "Invitación a MFC Management",
+            html: `
+                <h2>Te invitaron al sistema</h2>
+                <p>Hacé click en el siguiente link para crear tu cuenta:</p>
+                <a href="${link}">Crear cuenta</a>
+                <p>Este enlace expira en 24 horas.</p>
+            `
+        });
+
+        res.json({ message: "Invitation sent" });
 
     } catch (error) {
+        console.error("INVITATION ERROR:", error);
         res.status(500).json({ message: 'Error creating invitation' });
     }
 };

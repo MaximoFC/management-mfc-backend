@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import Invitation from "../models/invitation.model.js";
+import { sendEmail } from "../services/email.service.js";
 
 export const login = async (req, res) => {
     const { email, password } = req.body;
@@ -71,21 +72,21 @@ export const registerWithToken = async (req, res) => {
             return res.status(403).json({ error: "User limit reached" });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const existingUser = await Employee.findOne({ email: invitation.email });
 
+        if (existingUser) {
+            return res.status(400).json({ error: "User already exists" });
+        }
+        
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
         const employee = await Employee.create({
             name,
             email: invitation.email,
             password: hashedPassword,
             role: count === 0 ? "admin" : "employee"
         });
-
-        const existingUser = await Employee.findOne({ email: invitation.email });
-
-        if (existingUser) {
-            return res.status(400).json({ error: "User already exists" });
-        }
-
+        
         invitation.used = true;
         await invitation.save();
 
@@ -113,7 +114,16 @@ export const forgotPassword = async (req, res) => {
 
         const link = `http://localhost:5173/reset-password?token=${token}`;
 
-        console.log("RESET LINK:", link);
+        await sendEmail({
+            to: email,
+            subject: "Recuperar contraseña",
+            html: `
+                <h2>Recuperación de contraseña</h2>
+                <p>Hacé click en el siguiente link para cambiar tu contraseña:</p>
+                <a href="${link}">Restablecer contraseña</a>
+                <p>Este enlace expira en 15 minutos.</p>
+            `
+        });
 
         res.json({ message: "Email sent" });
     } catch (error) {
