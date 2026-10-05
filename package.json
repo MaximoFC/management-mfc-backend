@@ -26,5 +26,8 @@
     "pdfmake": "^0.2.20",
     "resend": "^6.10.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "engines": {
+    "node": ">=22.9"
   }
 }

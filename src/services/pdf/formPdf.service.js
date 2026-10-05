@@ -73,6 +73,10 @@ export const generateFormPdf = async (formData) => {
                         [
                             { text: `Marca: ${formData.bike?.brand || "-"}`, style: "infoBox" },
                             { text: `Modelo: ${formData.bike?.model || "-"}`, style: "infoBox" },
+                        ],
+                        [
+                            { text: `Color: ${formData.bike?.color || "-"}`, style: "infoBox" },
+                            { text: `N° de serie: ${formData.bike?.serialNumber || "-"}`, style: "infoBox" },
                         ]
                     ]
                 },
