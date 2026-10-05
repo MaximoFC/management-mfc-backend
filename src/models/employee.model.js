@@ -8,11 +8,15 @@ const employeeSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
-        unique: true
+        unique: true,
+        lowercase: true,
+        trim: true
     },
+    // select: false -> nunca sale en consultas ni populates salvo pedido explícito
     password: {
         type: String,
-        required: true
+        required: true,
+        select: false
     },
     role: {
         type: String,
@@ -21,8 +25,10 @@ const employeeSchema = new mongoose.Schema({
     },
 
     // Reset de password
-    resetToken: String,
-    resetTokenExpires: Date
+    resetToken: { type: String, select: false, index: true },
+    resetTokenExpires: { type: Date, select: false },
+    // Tokens JWT emitidos antes de este momento dejan de valer
+    passwordChangedAt: Date
 }, {
     timestamps: true
 });

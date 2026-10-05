@@ -20,8 +20,17 @@ const loginLimiter = rateLimit({
 
 router.post('/login', loginLimiter, login);
 router.get('/profile', tokenVerify, getProfile);
-router.post('/register', registerWithToken);
-router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', resetPassword);
+// Registro y recuperación: limitan intentos y envío de emails
+const accountLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    message: { error: 'Demasiados intentos, probá de nuevo más tarde' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+router.post('/register', accountLimiter, registerWithToken);
+router.post('/forgot-password', accountLimiter, forgotPassword);
+router.post('/reset-password', accountLimiter, resetPassword);
 
 export default router;

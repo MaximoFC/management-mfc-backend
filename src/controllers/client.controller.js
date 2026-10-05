@@ -1,6 +1,7 @@
 import Client from "../models/client.model.js";
 import Bike from "../models/bike.model.js";
 import Budget from "../models/budget.model.js";
+import { searchRegex } from '../utils/query.js';
 
 export const createClient = async (req, res) => {
     if (!req.body.name || !req.body.surname || !req.body.mobileNum) {
@@ -8,7 +9,8 @@ export const createClient = async (req, res) => {
     }
 
     try {
-        const client = new Client(req.body);
+        const { name, surname, mobileNum } = req.body;
+        const client = new Client({ name, surname, mobileNum });
         await client.save();
         res.status(201).json(client);
     } catch (error) {
@@ -22,19 +24,24 @@ export const createClient = async (req, res) => {
 export const getClients = async (req, res) => {
     try {
         //lo agregue para que se banque la busqueda en el navbar
-        const { q } = req.query;
-        let filter = {};
-        if (q) {
-            filter = {
-                $or: [
-                    { name: { $regex: q, $options: 'i' } },
-                    { surname: { $regex: q, $options: 'i' } },
-                    { mobileNum: { $regex: q, $options: 'i' } }
-                ]
-            };
+        const { q, withBikes, limit } = req.query;
+        const filter = q?.trim()
+            ? { $or: [{ name: searchRegex(q) }, { surname: searchRegex(q) }, { mobileNum: searchRegex(q) }] }
+            : {};
+
+        // withBikes=1: clientes con sus bicis en una sola consulta (evita una request por cliente)
+        if (withBikes === '1') {
+            const clients = await Client.aggregate([
+                { $match: filter },
+                { $sort: { createdAt: -1 } },
+                { $lookup: { from: 'bikes', localField: '_id', foreignField: 'current_owner_id', as: 'bikes' } }
+            ]);
+            return res.json(clients);
         }
-        const clients = await Client.find(filter).sort({ createdAt: -1 }).lean();
-        res.json(clients);
+
+        let query = Client.find(filter).sort({ createdAt: -1 });
+        if (limit) query = query.limit(Math.min(50, parseInt(limit) || 20));
+        res.json(await query.lean());
     } catch (error) {
         res.status(500).json({ error: 'Error getting clients' });
     }
@@ -56,9 +63,10 @@ export const getClientsById = async (req, res) => {
 
 export const updateClient = async (req, res) => {
     try {
+        const { name, surname, mobileNum } = req.body;
         const client = await Client.findByIdAndUpdate(
             req.params.id,
-            req.body,
+            { name, surname, mobileNum },
             { new: true, runValidators: true }
         );
 

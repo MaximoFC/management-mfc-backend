@@ -1,19 +1,17 @@
 import Service from '../models/service.model.js';
+import { searchRegex, getPagination, paginate } from '../utils/query.js';
 
 export const getAllServices = async (req, res) => {
   try {
     const { q } = req.query;
-
-    const filter = q
-      ? {
-        $or: [
-          { name: { $regex:q, $options: "i" } },
-          { description: { $regex: q, $options: "i" } }
-        ]
-      }
+    const filter = q?.trim()
+      ? { $or: [{ name: searchRegex(q) }, { description: searchRegex(q) }] }
       : {};
 
-    const services = await Service.find(filter).sort({ createdAt: -1 }).lean();
+    const pagination = getPagination(req.query);
+    if (pagination) return res.json(await paginate(Service, filter, pagination, { name: 1 }));
+
+    const services = await Service.find(filter).sort({ name: 1 }).lean();
     res.json(services);
   } catch (err) {
     console.error("Error retrieving services: ", err.message);
@@ -34,8 +32,9 @@ export const getServiceById = async (req, res) => {
 
 export const createService = async (req, res) => {
   try {
-    const { name, description, price_usd } = req.body;
-    const newService = new Service({ name, description, price_usd });
+    const { name, description, price_ars } = req.body;
+    if (!(Number(price_ars) > 0)) return res.status(400).json({ error: 'El precio debe ser mayor a 0' });
+    const newService = new Service({ name, description, price_ars: Number(price_ars) });
     await newService.save();
     res.status(201).json(newService);
   } catch (err) {
@@ -45,11 +44,12 @@ export const createService = async (req, res) => {
 
 export const updateService = async (req, res) => {
   try {
-    const { name, description, price_usd } = req.body;
+    const { name, description, price_ars } = req.body;
+    if (!(Number(price_ars) > 0)) return res.status(400).json({ error: 'El precio debe ser mayor a 0' });
 
     const updatedService = await Service.findByIdAndUpdate(
       req.params.id,
-      { name, description, price_usd },
+      { name, description, price_ars: Number(price_ars) },
       { new: true, runValidators: true }
     );
 

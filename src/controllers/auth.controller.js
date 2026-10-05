@@ -5,11 +5,24 @@ import crypto from "crypto";
 import Invitation from "../models/invitation.model.js";
 import { sendEmail } from "../services/email.service.js";
 
+const MIN_PASSWORD_LENGTH = 8;
+
+// Usuarios viejos pueden tener el email guardado con mayúsculas: buscar tal cual y normalizado
+const emailVariants = (email) => {
+    const raw = String(email ?? "").trim();
+    return { $in: [raw, raw.toLowerCase()] };
+};
+
+const invalidPassword = (password) =>
+    typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH;
+
 export const login = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        const employee = await Employee.findOne({ email });
+        if (typeof password !== "string") return res.status(400).json({ error: 'Invalid credentials' });
+
+        const employee = await Employee.findOne({ email: emailVariants(email) }).select('+password');
         if (!employee) return res.status(400).json({ error:'Invalid credentials' });
 
         const passwordOk = await bcrypt.compare(password, employee.password);
@@ -56,40 +69,41 @@ export const registerWithToken = async (req, res) => {
     try {
         const { token, name, password } = req.body;
 
-        const invitation = await Invitation.findOne({ token });
-
-        if (!invitation || invitation.used) {
-            return res.status(403).json({ error: "Invalid invitation" });
+        if (invalidPassword(password)) {
+            return res.status(400).json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres` });
+        }
+        if (!name?.trim()) {
+            return res.status(400).json({ error: "El nombre es obligatorio" });
         }
 
-        if (invitation.expiresAt < Date.now()) {
-            return res.status(403).json({ error: "Invitation expired" });
+        // Marcar la invitación como usada de forma atómica: dos registros simultáneos no pueden usar el mismo token
+        const invitation = await Invitation.findOneAndUpdate(
+            { token: String(token), used: false, expiresAt: { $gt: new Date() } },
+            { used: true }
+        );
+
+        if (!invitation) {
+            return res.status(403).json({ error: "Invalid or expired invitation" });
         }
 
         // limitar usuarios
         const count = await Employee.countDocuments();
-        if (count >= 2) {
-            return res.status(403).json({ error: "User limit reached" });
-        }
+        const existingUser = await Employee.findOne({ email: invitation.email.toLowerCase() });
 
-        const existingUser = await Employee.findOne({ email: invitation.email });
-
-        if (existingUser) {
-            return res.status(400).json({ error: "User already exists" });
+        if (count >= 2 || existingUser) {
+            await Invitation.updateOne({ _id: invitation._id }, { used: false });
+            return res.status(existingUser ? 400 : 403).json({ error: existingUser ? "User already exists" : "User limit reached" });
         }
         
         const hashedPassword = await bcrypt.hash(password, 10);
         
         const employee = await Employee.create({
-            name,
+            name: name.trim(),
             email: invitation.email,
             password: hashedPassword,
             role: count === 0 ? "admin" : "employee"
         });
         
-        invitation.used = true;
-        await invitation.save();
-
         res.json({ message: "User created" });
 
     } catch (err) {
@@ -102,9 +116,10 @@ export const forgotPassword = async (req, res) => {
     const { email } = req.body;
 
     try {
-        const user = await Employee.findOne({ email });
+        const okResponse = { message: "Si el email está registrado, te enviamos un link para recuperar la contraseña" };
+        const user = await Employee.findOne({ email: emailVariants(email) });
 
-        if (!user) return res.json({ message: "OK" }); // no revelar info
+        if (!user) return res.json(okResponse); // misma respuesta: no revelar qué emails existen
 
         const token = crypto.randomBytes(32).toString('hex');
 
@@ -112,7 +127,7 @@ export const forgotPassword = async (req, res) => {
         user.resetTokenExpires = Date.now() + 1000 * 60 * 15; // 15 min
         await user.save();
 
-        const link = `http://localhost:5173/reset-password?token=${token}`;
+        const link = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
 
         await sendEmail({
             to: email,
@@ -125,7 +140,7 @@ export const forgotPassword = async (req, res) => {
             `
         });
 
-        res.json({ message: "Email sent" });
+        res.json(okResponse);
     } catch (error) {
         res.status(500).json({ error: 'Server error' });
     }   
@@ -135,8 +150,12 @@ export const resetPassword = async (req, res) => {
     const { token, password } = req.body;
 
     try {
+        if (invalidPassword(password)) {
+            return res.status(400).json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres` });
+        }
+
         const user = await Employee.findOne({
-            resetToken: token,
+            resetToken: String(token),
             resetTokenExpires: { $gt: Date.now() }
         });
 
@@ -147,6 +166,8 @@ export const resetPassword = async (req, res) => {
         user.password = await bcrypt.hash(password, 10);
         user.resetToken = undefined;
         user.resetTokenExpires = undefined;
+        // -1s: el iat del JWT se redondea a segundos y un login inmediato no debe quedar invalidado
+        user.passwordChangedAt = new Date(Date.now() - 1000);
 
         await user.save();
 

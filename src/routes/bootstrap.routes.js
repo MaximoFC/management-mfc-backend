@@ -1,9 +1,9 @@
 import express from "express";
-import { getBootstrapData } from "../controllers/bootstrap.controller.js";
+import { getDashboardSummary } from "../controllers/bootstrap.controller.js";
 import { tokenVerify } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-router.get("/", tokenVerify, getBootstrapData);
+router.get("/dashboard", tokenVerify, getDashboardSummary);
 
 export default router;

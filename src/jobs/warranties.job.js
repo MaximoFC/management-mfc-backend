@@ -11,8 +11,11 @@ cron.schedule("0 0 * * *", async () => {
         const now = new Date();
 
         const budgets = await Budget.find({ "services.warranty.status": "activa" })
-            .populate("bike_id", "brand model current_owner_id")
-            .populate("bike_id.current_owner_id", "name surname");
+            .populate({
+                path: "bike_id",
+                select: "brand model color serialNumber current_owner_id",
+                populate: { path: "current_owner_id", select: "name surname" }
+            });
 
         const budgetsToSave = [];
 
@@ -36,6 +39,7 @@ cron.schedule("0 0 * * *", async () => {
                         warranty.status = "expirada";
                         modified = true;
                         expiredCount++;
+                        continue;
                     }
 
                     // 2. Revisar cada checkup
@@ -45,7 +49,7 @@ cron.schedule("0 0 * * *", async () => {
                             const oneWeekBefore = new Date(check.date);
                             oneWeekBefore.setDate(oneWeekBefore.getDate() - 7);
 
-                            if (!check.notified && now >= oneWeekBefore && now < check.date) {
+                            if (!check.completed && !check.notified && now >= oneWeekBefore && now < check.date) {
                                 notificationsToCreate.push({
                                     type: "reminder",
                                     message_body: `El servicio de ${service.name} de la bicicleta ${bike.brand} ${bike.model} del cliente ${owner.name} ${owner.surname} necesita revisión de garantía en una semana.`,
@@ -79,4 +83,4 @@ cron.schedule("0 0 * * *", async () => {
     } catch (error) {
         console.error("Warranty cron error", error);
     }
-})
+}, { timezone: "America/Argentina/Buenos_Aires" })

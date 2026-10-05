@@ -20,14 +20,15 @@ export const generateBudgetPdf = async (budgetData) => {
         logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
     }
 
-    const items = Array.isArray(budgetData.items) ? budgetData.items : [];
+    const items = (Array.isArray(budgetData.items) ? budgetData.items : []).slice(0, 200);
+    const money = (n) => `$${Number(n || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
 
     // --- Preparar filas de servicios y repuestos ---
     const serviceRows = items
         .filter(i => i.type === "service")
         .map(s => [
             s.name,
-            `$${s.price.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+            money(s.price)
         ]);
 
     const partRows = items
@@ -35,7 +36,7 @@ export const generateBudgetPdf = async (budgetData) => {
         .map(p => [
             p.name,
             p.qty,
-            `$${(p.price * p.qty).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+            money(Number(p.price) * Number(p.qty))
         ]);
 
 

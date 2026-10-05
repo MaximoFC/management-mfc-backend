@@ -11,9 +11,11 @@ import notificationRoutes from './routes/notification.routes.js';
 import serviceRoutes from './routes/service.routes.js';
 import utilsRoutes from './routes/utils.routes.js';
 import helmet from 'helmet';
+import compression from 'compression';
 import ticketRoutes from './routes/ticket.routes.js';
 import bootstrapRoutes from "./routes/bootstrap.routes.js";
 import invitationRoutes from './routes/invitation.routes.js';
+import { tokenVerify, isAdmin } from './middlewares/auth.middleware.js';
 
 connectDB();
 
@@ -38,23 +40,24 @@ app.use(cors({
         }
 
         console.warn("CORS blocked request from origin: ", origin);
-        return callback(new Error("CORS not allowed"));
+        return callback(Object.assign(new Error("CORS not allowed"), { status: 403 }));
     },
     credentials: true
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(compression());
+app.use(express.json({ limit: '200kb' }));
 
 app.use('/api/auth', authRoutes);
-app.use('/api/clients', clientRoutes);
-app.use('/api/bikes', bikeRoutes);
-app.use('/api/bikeparts', bikePartsRoutes);
-app.use('/api/budgets', budgetRoutes);
-app.use('/api/cash', cashRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/services', serviceRoutes);
-app.use('/api/utils', utilsRoutes);
-app.use('/api/tickets', ticketRoutes);
+app.use('/api/clients', tokenVerify, clientRoutes);
+app.use('/api/bikes', tokenVerify, bikeRoutes);
+app.use('/api/bikeparts', tokenVerify, bikePartsRoutes);
+app.use('/api/budgets', tokenVerify, budgetRoutes);
+app.use('/api/cash', tokenVerify, isAdmin, cashRoutes);
+app.use('/api/notifications', tokenVerify, notificationRoutes);
+app.use('/api/services', tokenVerify, serviceRoutes);
+app.use('/api/utils', tokenVerify, utilsRoutes);
+app.use('/api/tickets', tokenVerify, ticketRoutes);
 app.use("/api/bootstrap", bootstrapRoutes);
 app.use('/api/invitations', invitationRoutes);
 

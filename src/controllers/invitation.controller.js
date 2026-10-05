@@ -5,10 +5,10 @@ import { sendEmail } from "../services/email.service.js";
 
 export const createInvitation = async (req, res) => {
     try {
-        const { email } = req.body;
-        
-        if (!email) {
-            return res.status(400).json({ error: "Email is required" });
+        const email = String(req.body.email || "").toLowerCase().trim();
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ error: "Email inválido" });
         }
 
         const count = await Employee.countDocuments();
@@ -22,7 +22,8 @@ export const createInvitation = async (req, res) => {
             return res.status(400).json({ error: "User already exists" });
         }
 
-        const existingInvite = await Invitation.findOne({ email, used: false });
+        // Una invitación vencida no bloquea volver a invitar
+        const existingInvite = await Invitation.findOne({ email, used: false, expiresAt: { $gt: new Date() } });
         if (existingInvite) {
             return res.status(400).json({ error: "Invitation already sent" });
         }
