@@ -9,7 +9,9 @@ import {
   getAllBudgetsOfClient,
   getActiveWarranties,
   generatePdf,
-  updateBudgetItems
+  updateBudgetItems,
+  completeCheckup,
+  voidWarranty
 } from '../controllers/budget.controller.js';
 
 const router = express.Router();
@@ -25,6 +27,8 @@ router.post("/generate-pdf", generatePdf);
 router.get('/:id', getBudgetById);
 router.put('/:id', updateBudgetState);
 router.put("/:id/edit", updateBudgetItems);
+router.patch('/:id/checkup', completeCheckup);
+router.patch('/:id/warranty/void', voidWarranty);
 router.delete('/:id', deleteBudget);
 
 export default router;

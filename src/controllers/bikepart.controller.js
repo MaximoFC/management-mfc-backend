@@ -2,6 +2,7 @@ import BikePart from "../models/bikepart.model.js";
 import Notification from '../models/notification.model.js';
 import XLSX from "xlsx";
 import { createFlow } from "./cash.controller.js";
+import { searchRegex, getPagination, paginate } from '../utils/query.js';
 
 // helper numérico
 const toNumberSafe = (value) => {
@@ -23,12 +24,24 @@ const applyArsPricing = (part, data) => {
   part.is_legacy_pricing = false;
 };
 
+const LOW_STOCK = 5;
+
+// Agrega price/currency resueltos, igual que el listado, para que el front no muestre precios viejos
+const withPrice = (doc) => {
+  const p = doc.toObject ? doc.toObject() : doc;
+  return {
+    ...p,
+    price: p.pricing_currency === 'ARS' ? p.sale_price_ars : p.price_usd,
+    currency: p.pricing_currency
+  };
+};
+
 const createLowStockNotification = async (part) => {
   try {
     const exists = await Notification.findOne({
       type: "alert",
       bikepart_id: part._id,
-      read: false
+      seen: false
     });
 
     if (!exists) {
@@ -36,7 +49,7 @@ const createLowStockNotification = async (part) => {
         type: "alert",
         bikepart_id: part._id,
         message_body: `Stock bajo: ${part.brand} ${part.description} (${part.stock} unidad/es)`,
-        read: false
+        seen: false
       });
     }
   } catch (error) {
@@ -48,11 +61,13 @@ const createLowStockNotification = async (part) => {
 
 export const getBikeParts = async (req, res) => {
   try {
-    const { search, type } = req.query;
+    const { search, type, inStock } = req.query;
     const filter = {};
 
+    if (inStock === '1') filter.stock = { $gt: 0 };
+
     if (search?.trim()) {
-      const regex = new RegExp(search.trim(), "i");
+      const regex = searchRegex(search);
       filter.$or = [
         { brand: regex },
         { description: regex },
@@ -64,17 +79,14 @@ export const getBikeParts = async (req, res) => {
       filter.type = type.trim();
     }
 
-    const bikeparts = await BikePart.find(filter).sort({ brand: 1 });
+    const pagination = getPagination(req.query);
+    if (pagination) {
+      const result = await paginate(BikePart, filter, pagination, { brand: 1, description: 1 });
+      return res.json({ ...result, items: result.items.map(withPrice) });
+    }
 
-    res.json(
-      bikeparts.map(p => ({
-        ...p.toObject(),
-        price: p.pricing_currency === 'ARS'
-          ? p.sale_price_ars
-          : p.price_usd,
-        currency: p.pricing_currency
-      }))
-    );
+    const bikeparts = await BikePart.find(filter).sort({ brand: 1 }).lean();
+    res.json(bikeparts.map(withPrice));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -113,6 +125,9 @@ export const createBikeParts = async (req, res) => {
       throw new Error("Debe especificar precio en ARS o USD");
     }
 
+    await part.save();
+
+    // El egreso se registra después de guardar: si el código está duplicado no queda un egreso huérfano
     if (part.pricing_currency === "ARS") {
       const cost = toNumberSafe(part.cost_ars);
       const stock = toNumberSafe(part.stock);
@@ -123,18 +138,17 @@ export const createBikeParts = async (req, res) => {
           type: "egreso",
           amount,
           description: `Compra inicial de repuesto ${part.description}`,
-          employee_id: req.user?._id || null
+          employee_id: req.user?.id || null
         });
       }
     }
 
-    await part.save();
 
-    if (part.stock <= 5) {
+    if (part.stock <= LOW_STOCK) {
       await createLowStockNotification(part);
     }
 
-    res.status(201).json(part);
+    res.status(201).json(withPrice(part));
   } catch (err) {
     console.error("Error creando repuesto:", err.message);
     res.status(400).json({ error: err.message });
@@ -172,11 +186,11 @@ export const updateBikePart = async (req, res) => {
 
     await part.save();
 
-    if (part.stock <= 5) {
+    if (part.stock <= LOW_STOCK) {
       await createLowStockNotification(part);
     }
 
-    res.json(part);
+    res.json(withPrice(part));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -198,7 +212,7 @@ export const updateBikePartPartial = async (req, res) => {
     }
 
     await part.save();
-    res.json(part);
+    res.json(withPrice(part));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -219,28 +233,32 @@ export const updateBikePartStock = async (req, res) => {
       return res.status(400).json({ error: "Costo inválido" });
     }
 
+    // $inc atómico: no pisa descuentos de stock que ocurran al mismo tiempo
     const part = await BikePart.findById(req.params.id);
     if (!part) return res.status(404).json({ error: "No encontrado" });
 
-    part.stock += delta;
     part.cost_ars = cost_ars;
-
+    if (part.pricing_currency === "ARS") {
+      part.sale_price_ars = Math.round(cost_ars * (1 + (part.markup_percent ?? 45) / 100));
+    }
     await part.save();
+    const updated = await BikePart.findByIdAndUpdate(part._id, { $inc: { stock: delta } }, { new: true });
 
-    if (part.pricing_currency === "ARS" && part.cost_ars) {
-      const amount = part.cost_ars * delta;
+    if (updated.pricing_currency === "ARS" && updated.cost_ars) {
+      const amount = updated.cost_ars * delta;
 
       await createFlow({
         type: "egreso",
         amount,
-        description: `Reposición de stock ${part.description}`,
-        employee_id: req.user?._id || null
+        description: `Reposición de stock ${updated.description}`,
+        employee_id: req.user?.id || null
       })
     }
 
-    await createLowStockNotification(part);
+    // Solo avisar si después de reponer sigue bajo
+    if (updated.stock <= LOW_STOCK) await createLowStockNotification(updated);
 
-    res.json(part);
+    res.json(withPrice(updated));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -269,7 +287,8 @@ export const updateBikePartsPricesFromExcel = async (req, res) => {
       return res.status(400).json({ message: "No se subió ningún archivo" });
     }
 
-    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    // sheetRows acota cuánto se procesa ante un archivo armado para consumir memoria
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer", sheetRows: 20000 });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: "A" });
 

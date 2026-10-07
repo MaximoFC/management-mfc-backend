@@ -41,4 +41,6 @@ const bikeSchema = new mongoose.Schema({
     timestamps: true
 });
 
+bikeSchema.index({ current_owner_id: 1 });
+
 export default mongoose.model('Bike', bikeSchema);

@@ -17,7 +17,10 @@ export const getNotificationById = async (req, res) => {
 
 export const getAllNotifications = async (req, res) => {
   try {
-    const notifications = await Notification.find().sort({ creation_date: -1 }).lean();
+    // ?unseen=1 para el navbar; siempre con tope para no traer el historial completo
+    const filter = req.query.unseen === '1' ? { seen: false } : {};
+    const limit = Math.min(200, parseInt(req.query.limit) || 100);
+    const notifications = await Notification.find(filter).sort({ creation_date: -1 }).limit(limit).lean();
     res.json(notifications);
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener notificaciones' });

@@ -27,4 +27,6 @@ const cashFlowSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+cashFlowSchema.index({ date: -1 });
+
 export default mongoose.model('CashFlow', cashFlowSchema);

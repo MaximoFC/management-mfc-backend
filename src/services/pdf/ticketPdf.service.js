@@ -11,7 +11,8 @@ const fonts = {
 const printer = new PdfPrinter(fonts);
 
 export const generateTicket = async (data) => {
-    const { client, services = [], total_ars = 0 } = data;
+    const { client = {}, total_ars = 0 } = data;
+    const services = (Array.isArray(data.services) ? data.services : []).slice(0, 100);
 
     const body = 
         services && services.length > 0

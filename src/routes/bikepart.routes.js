@@ -2,6 +2,7 @@ import express from 'express';
 import upload from '../middlewares/upload.middleware.js';
 
 import BikePart from '../models/bikepart.model.js';
+import { searchRegex } from '../utils/query.js';
 import {
   createBikeParts,
   deleteBikePart,
@@ -21,15 +22,14 @@ router.get('/search', async (req, res) => {
     const { q } = req.query;
     if (!q) return res.json([]);
 
-    const regex = new RegExp(q, "i");
+    const regex = searchRegex(q);
     const results = await BikePart.find({
       $or: [
         { code: regex },
         { brand: regex },
-        { description: regex },
-        { category: regex }
+        { description: regex }
       ]
-    });
+    }).limit(20).lean();
     res.json(results);
   } catch (error) {
     res.status(500).json({ error: error.message });

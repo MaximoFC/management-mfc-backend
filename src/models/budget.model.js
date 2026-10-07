@@ -60,7 +60,7 @@ const budgetSchema = new mongoose.Schema({
         type: String,
         enum: ['USD', 'ARS']
       },             
-      amount: Number,
+      amount: { type: Number, min: 1 },
       subtotal: Number
     }
   ],
@@ -69,6 +69,8 @@ const budgetSchema = new mongoose.Schema({
       service_id: { type:mongoose.Schema.Types.ObjectId, ref: 'Service' },
       name: String,
       description: String,
+      price_ars: Number,
+      // Legacy: presupuestos anteriores a la migración guardaban el precio en USD
       price_usd: Number,
       warranty: warrantySchema,
       covered_by_warranty: { type: mongoose.Schema.Types.ObjectId, ref: 'Budget', default: null }
@@ -79,7 +81,15 @@ const budgetSchema = new mongoose.Schema({
     ref: 'Client',
     required: true
   }
-}, { timestamps: true });
+}, {
+  timestamps: true,
+  // Detecta guardados simultáneos (ej. editar ítems mientras otro cambia el estado)
+  optimisticConcurrency: true
+});
+
+budgetSchema.index({ bike_id: 1 });
+budgetSchema.index({ state: 1, creation_date: -1 });
+budgetSchema.index({ 'services.warranty.status': 1, 'services.warranty.endDate': 1 });
 
 budgetSchema.pre('save', function (next) {
   if (this.currency === 'USD') {
